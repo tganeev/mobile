@@ -54,9 +54,12 @@ import org.readium.r2.testapp.utils.UserError
 import org.readium.r2.testapp.utils.createViewModelFactory
 import org.readium.r2.testapp.utils.extensions.toHtml
 import timber.log.Timber
+import android.content.Context
+
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(
+    private val application: Application,
     private val bookId: Long,
     private val readerRepository: ReaderRepository,
     private val bookRepository: BookRepository,
@@ -97,6 +100,29 @@ class ReaderViewModel(
         viewModelScope = viewModelScope,
         readerInitData = readerInitData
     )
+
+    private val _isScrollMode = MutableStateFlow(false)
+    val isScrollMode: StateFlow<Boolean> = _isScrollMode
+
+    // Добавьте метод для установки режима
+    fun setScrollMode(enabled: Boolean) {
+        _isScrollMode.value = enabled
+    }
+
+    private val prefs = application.getSharedPreferences("reader_scroll_mode", Context.MODE_PRIVATE)
+
+    init {
+        // Загружаем сохраненное состояние Scroll режима для этой книги
+        _isScrollMode.value = prefs.getBoolean("scroll_mode_$bookId", false)
+
+        // Сохраняем изменения при изменении
+        viewModelScope.launch {
+            _isScrollMode.collect { isScroll ->
+                prefs.edit().putBoolean("scroll_mode_$bookId", isScroll).apply()
+                android.util.Log.d("ReaderViewModel", "Scroll mode saved for book $bookId: $isScroll")
+            }
+        }
+    }
 
     override fun onCleared() {
         // When the ReaderViewModel is disposed of, we want to close the publication to avoid
@@ -283,6 +309,8 @@ class ReaderViewModel(
         activityChannel.send(ActivityCommand.OpenExternalLink(url))
     }
 
+
+
     override fun shouldFollowInternalLink(
         link: Link,
         context: HyperlinkNavigator.LinkContext?,
@@ -344,9 +372,10 @@ class ReaderViewModel(
         fun createFactory(application: Application, arguments: ReaderActivityContract.Arguments) =
             createViewModelFactory {
                 ReaderViewModel(
-                    arguments.bookId,
-                    application.readerRepository,
-                    application.bookRepository
+                    application = application, // Передаем application
+                    bookId = arguments.bookId,
+                    readerRepository = application.readerRepository,
+                    bookRepository = application.bookRepository
                 )
             }
     }

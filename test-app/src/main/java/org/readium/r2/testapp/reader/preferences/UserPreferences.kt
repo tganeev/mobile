@@ -10,14 +10,16 @@ package org.readium.r2.testapp.reader.preferences
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
+//import androidx.lifecycle.viewmodel.compose.viewModel
 import org.readium.adapter.exoplayer.audio.ExoPlayerPreferencesEditor
 import org.readium.adapter.pdfium.navigator.PdfiumPreferencesEditor
 import org.readium.navigator.media.tts.android.AndroidTtsEngine
@@ -33,6 +35,7 @@ import org.readium.r2.testapp.reader.ReaderViewModel
 import org.readium.r2.testapp.reader.tts.TtsPreferencesEditor
 import org.readium.r2.testapp.shared.views.*
 import org.readium.r2.testapp.utils.compose.DropdownMenuButton
+import androidx.compose.runtime.collectAsState
 
 /**
  * Stateful user settings component paired with a [ReaderViewModel].
@@ -57,6 +60,16 @@ private fun <P : Configurable.Preferences<P>, E : PreferencesEditor<P>> UserPref
     commit: () -> Unit,
     title: String,
 ) {
+    // Получаем ViewModel
+    val context = LocalContext.current
+    val readerViewModel: ReaderViewModel = try {
+        val activity = context as androidx.appcompat.app.AppCompatActivity
+        ViewModelProvider(activity)[ReaderViewModel::class.java]
+    } catch (e: Exception) {
+        // Если не можем получить, создаем заглушку
+        return
+    }
+
     Column(
         modifier = Modifier.padding(vertical = 24.dp)
     ) {
@@ -93,6 +106,7 @@ private fun <P : Configurable.Preferences<P>, E : PreferencesEditor<P>> UserPref
             is PdfiumPreferencesEditor ->
                 FixedLayoutUserPreferences(
                     commit = commit,
+                    readerViewModel = readerViewModel,
                     readingProgression = editor.readingProgression,
                     scrollAxis = editor.scrollAxis,
                     fit = editor.fit,
@@ -104,6 +118,7 @@ private fun <P : Configurable.Preferences<P>, E : PreferencesEditor<P>> UserPref
                     Layout.REFLOWABLE, Layout.SCROLLED ->
                         ReflowableUserPreferences(
                             commit = commit,
+                            readerViewModel = readerViewModel,
                             backgroundColor = editor.backgroundColor,
                             columnCount = editor.columnCount,
                             fontFamily = editor.fontFamily,
@@ -132,6 +147,7 @@ private fun <P : Configurable.Preferences<P>, E : PreferencesEditor<P>> UserPref
                     Layout.FIXED ->
                         FixedLayoutUserPreferences(
                             commit = commit,
+                            readerViewModel = readerViewModel,
                             backgroundColor = editor.backgroundColor,
                             language = editor.language,
                             readingProgression = editor.readingProgression,
@@ -204,6 +220,7 @@ private fun MediaUserPreferences(
 @Composable
 private fun FixedLayoutUserPreferences(
     commit: () -> Unit,
+    readerViewModel: ReaderViewModel,
     language: Preference<Language?>? = null,
     readingProgression: EnumPreference<ReadingProgression>? = null,
     backgroundColor: Preference<Color>? = null,
@@ -223,12 +240,71 @@ private fun FixedLayoutUserPreferences(
         }
 
         if (readingProgression != null) {
-            ButtonGroupItem(
-                title = "Reading progression",
-                preference = readingProgression,
-                commit = commit,
-                formatValue = { it.name }
-            )
+            Column {
+                Text(
+                    text = "Reading progression",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    val options = listOf("LTR", "RTL", "Scroll")
+
+                    // Получаем текущее состояние Scroll режима из ViewModel
+                    val isScrollMode by readerViewModel.isScrollMode.collectAsState()
+
+                    // Определяем, какая опция сейчас выбрана
+                    val currentValue = readingProgression.value ?: readingProgression.effectiveValue
+                    val selectedOption = when {
+                        isScrollMode -> "Scroll"
+                        currentValue == ReadingProgression.LTR -> "LTR"
+                        currentValue == ReadingProgression.RTL -> "RTL"
+                        else -> "LTR"
+                    }
+
+                    options.forEach { option ->
+                        FilterChip(
+                            selected = selectedOption == option,
+                            onClick = {
+                                if (option == "Scroll") {
+                                    readerViewModel.setScrollMode(true)
+                                    readingProgression.clear()
+                                } else {
+                                    readerViewModel.setScrollMode(false)
+                                    val newValue = when (option) {
+                                        "LTR" -> ReadingProgression.LTR
+                                        "RTL" -> ReadingProgression.RTL
+                                        else -> ReadingProgression.LTR
+                                    }
+                                    if (newValue == readingProgression.value) {
+                                        readingProgression.clear()
+                                    } else {
+                                        readingProgression.set(newValue)
+                                    }
+                                }
+                                commit()
+                            },
+                            label = { Text(option) }
+                        )
+                    }
+
+                    if (readingProgression.value != null || isScrollMode) {
+                        TextButton(
+                            onClick = {
+                                readerViewModel.setScrollMode(false)
+                                readingProgression.clear()
+                                commit()
+                            }
+                        ) {
+                            Text("Clear")
+                        }
+                    }
+                }
+            }
+            Divider()
         }
 
         Divider()
@@ -242,14 +318,6 @@ private fun FixedLayoutUserPreferences(
         )
 
         Divider()
-    }
-
-    if (scroll != null) {
-        SwitchItem(
-            title = "Scroll",
-            preference = scroll,
-            commit = commit
-        )
     }
 
     if (scrollAxis != null) {
@@ -318,6 +386,7 @@ private fun FixedLayoutUserPreferences(
 @Composable
 private fun ReflowableUserPreferences(
     commit: () -> Unit,
+    readerViewModel: ReaderViewModel,
     backgroundColor: Preference<Color>? = null,
     columnCount: EnumPreference<ColumnCount>? = null,
     fontFamily: Preference<FontFamily?>? = null,
@@ -352,12 +421,70 @@ private fun ReflowableUserPreferences(
         }
 
         if (readingProgression != null) {
-            ButtonGroupItem(
-                title = "Reading progression",
-                preference = readingProgression,
-                commit = commit,
-                formatValue = { it.name }
-            )
+            // Тот же самый код для селектора
+            Column {
+                Text(
+                    text = "Reading progression",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    val options = listOf("LTR", "RTL", "Scroll")
+
+                    val isScrollMode by readerViewModel.isScrollMode.collectAsState()
+
+                    val currentValue = readingProgression.value ?: readingProgression.effectiveValue
+                    val selectedOption = when {
+                        isScrollMode -> "Scroll"
+                        currentValue == ReadingProgression.LTR -> "LTR"
+                        currentValue == ReadingProgression.RTL -> "RTL"
+                        else -> "LTR"
+                    }
+
+                    options.forEach { option ->
+                        FilterChip(
+                            selected = selectedOption == option,
+                            onClick = {
+                                if (option == "Scroll") {
+                                    readerViewModel.setScrollMode(true)
+                                    readingProgression.clear()
+                                } else {
+                                    readerViewModel.setScrollMode(false)
+                                    val newValue = when (option) {
+                                        "LTR" -> ReadingProgression.LTR
+                                        "RTL" -> ReadingProgression.RTL
+                                        else -> ReadingProgression.LTR
+                                    }
+                                    if (newValue == readingProgression.value) {
+                                        readingProgression.clear()
+                                    } else {
+                                        readingProgression.set(newValue)
+                                    }
+                                }
+                                commit()
+                            },
+                            label = { Text(option) }
+                        )
+                    }
+
+                    if (readingProgression.value != null || isScrollMode) {
+                        TextButton(
+                            onClick = {
+                                readerViewModel.setScrollMode(false)
+                                readingProgression.clear()
+                                commit()
+                            }
+                        ) {
+                            Text("Clear")
+                        }
+                    }
+                }
+            }
+            Divider()
         }
 
         if (verticalText != null) {
@@ -372,14 +499,6 @@ private fun ReflowableUserPreferences(
     }
 
     if (scroll != null || columnCount != null || pageMargins != null) {
-        if (scroll != null) {
-            SwitchItem(
-                title = "Scroll",
-                preference = scroll,
-                commit = commit
-            )
-        }
-
         if (columnCount != null) {
             ButtonGroupItem(
                 title = "Columns",
@@ -627,21 +746,11 @@ private fun PresetsMenuButton(
     }
 }
 
-/**
- * A preset is a named group of settings applied together.
- */
-
-/**
- * A preset is a named group of settings applied together.
- */
 class Preset(
     val title: String,
     val apply: () -> Unit,
 )
 
-/**
- * Returns the presets associated with the [Configurable.Settings] receiver.
- */
 val <P : Configurable.Preferences<P>> PreferencesEditor<P>.presets: List<Preset> get() =
     when (this) {
         is EpubPreferencesEditor ->

@@ -84,6 +84,12 @@ import org.readium.r2.testapp.utils.padSystemUi
 import org.readium.r2.testapp.utils.showSystemUi
 import org.readium.r2.testapp.utils.toggleSystemUi
 import org.readium.r2.testapp.utils.viewLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
+
+
 
 /*
  * Base reader fragment class
@@ -96,6 +102,7 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
     protected var binding: FragmentReaderBinding by viewLifecycle()
 
     private lateinit var navigatorFragment: Fragment
+    private var touchInterceptorView: View? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -115,10 +122,29 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
         super.onViewCreated(view, savedInstanceState)
 
         navigatorFragment = navigator as Fragment
+        setupPageTurning()
 
-        (navigator as OverflowableNavigator).apply {
-            // This will automatically turn pages when tapping the screen edges or arrow keys.
-            addInputListener(DirectionalNavigationAdapter(this))
+        if (navigator is OverflowableNavigator) {
+            val directionalAdapter = DirectionalNavigationAdapter(navigator as OverflowableNavigator)
+
+            // Добавляем адаптер по умолчанию
+            (navigator as OverflowableNavigator).addInputListener(directionalAdapter)
+
+            // Следим за изменением режима Scroll
+            viewLifecycleOwner.lifecycleScope.launch {
+                viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                    model.isScrollMode.collect { isScrollMode ->
+                        android.util.Log.d("VisualReaderFragment", "Scroll mode: $isScrollMode")
+                        if (isScrollMode) {
+                            // Отключаем свайп
+                            (navigator as OverflowableNavigator).removeInputListener(directionalAdapter)
+                        } else {
+                            // Включаем свайп
+                            (navigator as OverflowableNavigator).addInputListener(directionalAdapter)
+                        }
+                    }
+                }
+            }
         }
 
         (navigator as VisualNavigator).apply {
@@ -187,6 +213,49 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
             when (event) {
                 is ReaderViewModel.VisualFragmentCommand.ShowPopup ->
                     showFootnotePopup(event.text)
+            }
+        }
+    }
+
+    private fun setupPageTurning() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                model.isScrollMode.collect { isScrollMode ->
+                    android.util.Log.d("VisualReaderFragment", "Scroll mode changed to: $isScrollMode")
+
+                    try {
+                        // Получаем корневой View (не FragmentContainerView)
+                        val rootView = requireView() as? ViewGroup ?: return@collect
+
+                        if (isScrollMode) {
+                            // Добавляем прозрачный слой для блокировки касаний
+                            if (touchInterceptorView == null) {
+                                touchInterceptorView = View(requireContext()).apply {
+                                    layoutParams = ViewGroup.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.MATCH_PARENT
+                                    )
+                                    // Блокируем все касания
+                                    setOnTouchListener { _, _ -> true }
+                                    // Делаем слой прозрачным
+                                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                }
+                                // Добавляем слой в корневой View
+                                rootView.addView(touchInterceptorView)
+                                android.util.Log.d("VisualReaderFragment", "Touch interceptor ADDED")
+                            }
+                        } else {
+                            // Удаляем слой блокировки
+                            touchInterceptorView?.let {
+                                rootView.removeView(it)
+                                touchInterceptorView = null
+                                android.util.Log.d("VisualReaderFragment", "Touch interceptor REMOVED")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("VisualReaderFragment", "Error toggling touch interceptor", e)
+                    }
+                }
             }
         }
     }
@@ -317,7 +386,11 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
     }
 
     override fun onDestroyView() {
-        (navigator as? DecorableNavigator)?.removeDecorationListener(decorationListener)
+        // Удаляем слой блокировки, если он есть
+        touchInterceptorView?.let {
+            (requireView() as? ViewGroup)?.removeView(it)
+            touchInterceptorView = null
+        }
         super.onDestroyView()
     }
 

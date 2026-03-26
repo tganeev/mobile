@@ -34,7 +34,12 @@ abstract class UserPreferencesBottomSheetDialogFragment(
 
     @Composable
     override fun Content() {
-        UserPreferences(preferencesModel, title)
+        UserPreferences(
+            model = preferencesModel,
+            title = title
+            // Убираем параметр onScrollModeChanged, так как теперь он не нужен
+            // ViewModel получается напрямую внутри UserPreferences
+        )
     }
 }
 

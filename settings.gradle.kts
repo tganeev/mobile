@@ -91,4 +91,4 @@ project(":readium:streamer")
     .name = "readium-streamer"
 
 include("test-app")
-include(":demos:navigator")
+//include(":demos:navigator")
