@@ -117,4 +117,12 @@ dependencies {
     // Room database
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
+
+    // Retrofit для работы с API
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // Kotlin Coroutines для работы с Retrofit
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }

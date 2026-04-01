@@ -1,5 +1,3 @@
-// File: test-app/src/main/java/org/readium/r2/testapp/data/db/BooksDao.kt
-
 package org.readium.r2.testapp.data.db
 
 import androidx.room.Dao
@@ -8,9 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
-import org.readium.r2.testapp.data.model.Book
-import org.readium.r2.testapp.data.model.Bookmark
-import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.*
 
 @Dao
 interface BooksDao {
@@ -24,10 +20,12 @@ interface BooksDao {
     @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.ID + " = :id")
     suspend fun get(id: Long): Book?
 
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IDENTIFIER + " = :identifier")
+    suspend fun getBookByIdentifier(identifier: String): Book?
+
     @Query("SELECT * FROM " + Book.TABLE_NAME + " ORDER BY " + Book.CREATION_DATE + " desc")
     fun getAllBooks(): Flow<List<Book>>
 
-    // Обновление статистики чтения
     @Update
     suspend fun updateBook(book: Book)
 
@@ -53,10 +51,11 @@ interface BooksDao {
     )
     suspend fun saveProgression(locator: String, id: Long)
 
-    // Остальные методы...
+    // Методы для работы с закладками
     @Query("SELECT * FROM " + Bookmark.TABLE_NAME + " WHERE " + Bookmark.BOOK_ID + " = :bookId")
     fun getBookmarksForBook(bookId: Long): Flow<List<Bookmark>>
 
+    // Методы для работы с подсветками
     @Query(
         "SELECT * FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.BOOK_ID} = :bookId ORDER BY ${Highlight.TOTAL_PROGRESSION} ASC"
     )
@@ -86,4 +85,20 @@ interface BooksDao {
 
     @Query("DELETE FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.ID} = :id")
     suspend fun deleteHighlight(id: Long)
+
+    // Методы для работы со статистикой чтения - используем String для даты
+    @Query("SELECT * FROM reading_stats WHERE book_id = :bookId ORDER BY date ASC")
+    fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertReadingStat(stat: ReadingStat)
+
+    @Query("DELETE FROM reading_stats WHERE book_id = :bookId AND date = :date")
+    suspend fun deleteReadingStat(bookId: Long, date: String)  // Используем String вместо LocalDate
+
+    @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
+    suspend fun getTotalPagesRead(bookId: Long): Int?
+
+    @Query("SELECT SUM(hours_read) FROM reading_stats WHERE book_id = :bookId")
+    suspend fun getTotalHoursRead(bookId: Long): Double?
 }

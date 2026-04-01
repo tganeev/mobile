@@ -25,6 +25,7 @@ import org.readium.r2.testapp.domain.Bookshelf
 import org.readium.r2.testapp.domain.CoverStorage
 import org.readium.r2.testapp.domain.PublicationRetriever
 import org.readium.r2.testapp.reader.ReaderRepository
+import org.readium.r2.testapp.sync.SyncManager
 import org.readium.r2.testapp.utils.tryOrLog
 import timber.log.Timber
 
@@ -42,6 +43,9 @@ class Application : android.app.Application() {
         private set
 
     lateinit var readerRepository: ReaderRepository
+        private set
+
+    lateinit var syncManager: SyncManager
         private set
 
     private val coroutineScope: CoroutineScope =
@@ -98,6 +102,8 @@ class Application : android.app.Application() {
             bookRepository,
             navigatorPreferences
         )
+
+        syncManager = SyncManager(this, bookRepository)
     }
 
     private fun computeStorageDir(): File {

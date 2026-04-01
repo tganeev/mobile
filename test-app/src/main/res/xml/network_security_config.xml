@@ -1,25 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <!--
-        Required with LCP support.
-        The CRL is served from an HTTP server, so we need to explicitly allow clear-text traffic on
-        this domain
-        See https://github.com/readium/r2-lcp-kotlin/issues/59
-        -->
-        <domain includeSubdomains="false">crl.edrlab.telesec.de</domain>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">my-pkms.ru</domain>
 
-        <!-- Publications from Feedbooks' catalog are downloaded through HTTP -->
+        <!-- Настройки для HTTPS -->
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Для локальной разработки (можно оставить) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+
+        <domain includeSubdomains="false">crl.edrlab.telesec.de</domain>
         <domain includeSubdomains="true">feedbooks.com</domain>
         <domain includeSubdomains="true">feedbooks.net</domain>
-
-        <!--
-        Required for the Open Textbooks Catalog OPDS feed to load properly
-        open.minitex.org is for the publications
-        s3.amazonaws.com is for the cover images
-        -->
         <domain includeSubdomains="false">open.minitex.org</domain>
         <domain includeSubdomains="false">s3.amazonaws.com</domain>
-
     </domain-config>
 </network-security-config>

@@ -17,6 +17,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import java.time.LocalDate
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -43,6 +44,7 @@ import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.domain.toUserError
 import org.readium.r2.testapp.reader.preferences.UserPreferencesViewModel
 import org.readium.r2.testapp.reader.tts.TtsViewModel
@@ -52,6 +54,8 @@ import org.readium.r2.testapp.utils.UserError
 import org.readium.r2.testapp.utils.createViewModelFactory
 import org.readium.r2.testapp.utils.extensions.toHtml
 import timber.log.Timber
+
+private var lastSavedTime: Long = 0
 
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(
@@ -154,26 +158,59 @@ class ReaderViewModel(
      * Сохраняет текущую статистику чтения в базу данных
      */
     private suspend fun saveReadingStats() {
-        // Получаем текущий локатор из readerInitData (если есть)
         val currentLocator = getCurrentLocator()
-
         val currentPage = calculateCurrentPage(currentLocator)
+        val currentTime = readingTimer.elapsedSeconds.value
 
-        // Обновляем страницы только если они увеличились
-        val newPagesRead = maxOf(lastSavedPage, currentPage)
+        // Получаем текущую дату
+        val today = LocalDate.now()
 
-        if (newPagesRead != lastSavedPage) {
-            lastSavedPage = newPagesRead
-            Timber.d("Pages updated: $lastSavedPage")
+        // Получаем существующую статистику за сегодня
+        val existingStats = bookRepository.getReadingStatsForBook(bookId).firstOrNull()
+        val todayStat = existingStats?.find { it.date == today }
+
+        // Вычисляем инкрементальные значения
+        val incrementalPages = if (todayStat != null) {
+            // Если уже есть запись за сегодня, добавляем разницу
+            val newPages = currentPage - lastSavedPage
+            maxOf(0, newPages)
+        } else {
+            // Если записи нет, это первое чтение за сегодня
+            currentPage
         }
 
-        // Сохраняем статистику
+        val incrementalHours = if (todayStat != null) {
+            // Если уже есть запись, добавляем разницу во времени
+            val newHours = (currentTime - lastSavedTime) / 3600.0
+            maxOf(0.0, newHours)
+        } else {
+            // Если записи нет, это первое чтение
+            currentTime / 3600.0
+        }
+
+        // Сохраняем ежедневную статистику
+        val readingStat = ReadingStat(
+            bookId = bookId,
+            date = today,
+            pagesRead = (todayStat?.pagesRead ?: 0) + incrementalPages,
+            hoursRead = (todayStat?.hoursRead ?: 0.0) + incrementalHours
+        )
+        bookRepository.saveReadingStat(readingStat)
+
+        // Обновляем агрегированные значения в книге
+        val totalPages = bookRepository.getTotalPagesRead(bookId)
+        val totalHours = bookRepository.getTotalHoursRead(bookId)
+
         bookRepository.updateReadingStats(
             bookId = bookId,
-            readingTime = readingTimer.elapsedSeconds.value,
-            pagesRead = newPagesRead,
+            readingTime = (totalHours * 3600).toLong(),
+            pagesRead = totalPages,
             locator = currentLocator
         )
+
+        // Обновляем сохраненные значения
+        lastSavedPage = currentPage
+        lastSavedTime = currentTime
     }
 
     /**

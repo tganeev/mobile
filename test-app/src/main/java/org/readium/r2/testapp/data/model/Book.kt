@@ -1,5 +1,3 @@
-// File: test-app/src/main/java/org/readium/r2/testapp/data/model/Book.kt
-
 package org.readium.r2.testapp.data.model
 
 import androidx.room.ColumnInfo
@@ -22,29 +20,27 @@ data class Book(
     @ColumnInfo(name = AUTHOR)
     val author: String? = null,
     @ColumnInfo(name = IDENTIFIER)
-    val identifier: String,
+    val identifier: String? = null,
     @ColumnInfo(name = PROGRESSION)
     val progression: String? = null,
     @ColumnInfo(name = MEDIA_TYPE)
     val rawMediaType: String,
     @ColumnInfo(name = COVER)
     val cover: String,
-    // Новые поля
     @ColumnInfo(name = READING_TIME, defaultValue = "0")
-    var readingTime: Long = 0, // Время чтения в секундах
+    var readingTime: Long = 0,
     @ColumnInfo(name = PAGES_READ, defaultValue = "0")
-    var pagesRead: Int = 0, // Количество прочитанных страниц
+    var pagesRead: Int = 0,
     @ColumnInfo(name = LAST_READ_DATE)
-    var lastReadDate: Long? = null // Дата последнего открытия
+    var lastReadDate: Long? = null
 ) {
-
     constructor(
         id: Long? = null,
         creation: Long? = null,
         href: String,
         title: String?,
         author: String? = null,
-        identifier: String,
+        identifier: String? = null,
         progression: String? = null,
         mediaType: MediaType,
         cover: String,
@@ -68,11 +64,9 @@ data class Book(
 
     val url: AbsoluteUrl get() = AbsoluteUrl(href)!!
 
-    val mediaType: MediaType get() =
-        MediaType(rawMediaType)!!
+    val mediaType: MediaType get() = MediaType(rawMediaType)!!
 
     companion object {
-
         const val TABLE_NAME = "books"
         const val ID = "id"
         const val CREATION_DATE = "creation_date"

@@ -4,6 +4,7 @@ package org.readium.r2.testapp.data
 
 import androidx.annotation.ColorInt
 import java.io.File
+import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import org.joda.time.DateTime
 import org.readium.r2.shared.publication.Locator
@@ -15,6 +16,7 @@ import org.readium.r2.testapp.data.db.BooksDao
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.data.model.Bookmark
 import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.utils.extensions.readium.authorName
 
 class BookRepository(
@@ -104,8 +106,8 @@ class BookRepository(
             creation = DateTime().toDate().time,
             title = publication.metadata.title ?: url.filename,
             author = publication.metadata.authorName,
+            identifier = publication.metadata.identifier, // Добавляем identifier
             href = url.toString(),
-            identifier = publication.metadata.identifier ?: "",
             mediaType = mediaType,
             progression = "{}",
             cover = cover.path,
@@ -116,6 +118,26 @@ class BookRepository(
         return booksDao.insertBook(book)
     }
 
+    fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>> =
+        booksDao.getReadingStatsForBook(bookId)
+
+    suspend fun saveReadingStat(stat: ReadingStat) {
+        booksDao.insertReadingStat(stat)
+    }
+
+    suspend fun deleteReadingStat(bookId: Long, date: LocalDate) {
+        // Конвертируем LocalDate в строку для запроса
+        booksDao.deleteReadingStat(bookId, date.toString())
+    }
+
+    suspend fun getTotalPagesRead(bookId: Long): Int =
+        booksDao.getTotalPagesRead(bookId) ?: 0
+
+    suspend fun getTotalHoursRead(bookId: Long): Double =
+        booksDao.getTotalHoursRead(bookId) ?: 0.0
+
     suspend fun deleteBook(id: Long) =
         booksDao.deleteBook(id)
+
+
 }

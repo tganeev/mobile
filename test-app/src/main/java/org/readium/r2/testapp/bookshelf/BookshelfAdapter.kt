@@ -57,7 +57,7 @@ class BookshelfAdapter(
             // Отображаем статистику
             binding.readingStatsLayout.visibility = View.VISIBLE
 
-            // Форматируем время чтения
+            // Форматируем время чтения (уже в секундах)
             val readingTimeText = formatReadingTime(book.readingTime)
             binding.readingTimeText.text = "⏱️ $readingTimeText"
 
