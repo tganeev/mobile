@@ -2,6 +2,8 @@ package org.readium.r2.testapp.sync
 
 import android.content.Context
 import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -30,19 +32,20 @@ class SyncManager(
     companion object {
         private const val TAG = "SyncManager"
         private const val BASE_URL = "https://my-pkms.ru"
-        private const val CONNECTION_TIMEOUT = 30L // seconds
-
+        private const val CONNECTION_TIMEOUT = 30L
     }
 
+    private val gson: Gson = GsonBuilder()
+        .setPrettyPrinting()
+        .create()
+
     private val api: SyncApi by lazy {
-        // Создаем логгер для отладки
         val loggingInterceptor = HttpLoggingInterceptor { message ->
             Log.d(TAG, message)
         }.apply {
             level = HttpLoggingInterceptor.Level.BODY
         }
 
-        // Настраиваем OkHttpClient
         val client = OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
             .connectTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
@@ -50,7 +53,6 @@ class SyncManager(
             .writeTimeout(CONNECTION_TIMEOUT, TimeUnit.SECONDS)
             .build()
 
-        // Настраиваем Retrofit
         val retrofit = Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(client)
@@ -60,9 +62,6 @@ class SyncManager(
         retrofit.create(SyncApi::class.java)
     }
 
-    /**
-     * Проверка соединения с сервером
-     */
     suspend fun testConnection(): Result<Map<String, String>> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Testing connection to $BASE_URL")
@@ -75,19 +74,14 @@ class SyncManager(
         }
     }
 
-    /**
-     * Синхронизация всех книг и статистики
-     */
     suspend fun syncAllBooks(username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting sync for user: $username")
 
-            // Получаем все книги
             val books = bookRepository.books().first()
             Log.d(TAG, "Found ${books.size} books to sync")
 
             if (books.isEmpty()) {
-                Log.d(TAG, "No books to sync")
                 return@withContext Result.success(
                     SyncResponseDTO(
                         success = true,
@@ -101,42 +95,47 @@ class SyncManager(
                 )
             }
 
-            // Собираем DTO для отправки
             val syncBooks = mutableListOf<SyncBookDTO>()
 
             for (book in books) {
                 try {
                     val stats = bookRepository.getReadingStatsForBook(book.id!!).first()
 
-                    syncBooks.add(
-                        SyncBookDTO(
-                            identifier = book.identifier ?: generateBookIdentifier(book),
-                            title = book.title ?: "",
-                            author = book.author,
-                            totalPages = null,
-                            language = null,
-                            categoryId = null,
-                            readingStats = stats.map { stat ->
-                                SyncReadingStatDTO(
-                                    date = stat.date,
-                                    pagesRead = stat.pagesRead,
-                                    hoursRead = stat.hoursRead
-                                )
-                            }
-                        )
+                    val syncBook = SyncBookDTO(
+                        identifier = book.identifier ?: generateBookIdentifier(book),
+                        title = book.title ?: "",
+                        author = book.author ?: "",
+                        totalPages = null,
+                        language = null,
+                        categoryId = null,
+                        readingStats = stats.map { stat ->
+                            SyncReadingStatDTO(
+                                date = stat.date.toString(), // Преобразуем LocalDate в строку
+                                pagesRead = stat.pagesRead,
+                                hoursRead = stat.hoursRead
+                            )
+                        }
                     )
 
+                    syncBooks.add(syncBook)
                     Log.d(TAG, "Prepared book: ${book.title} with ${stats.size} stats records")
+
+                    // Логируем отправляемые данные для отладки
+                    val bookJson = gson.toJson(syncBook)
+                    Log.d(TAG, "Book JSON: $bookJson")
+
                 } catch (e: Exception) {
                     Log.e(TAG, "Error preparing book ${book.title}", e)
                 }
             }
 
             val request = SyncRequestDTO(username, syncBooks)
+            val requestJson = gson.toJson(request)
             Log.d(TAG, "Sending sync request with ${syncBooks.size} books")
+            Log.d(TAG, "Request JSON: $requestJson")
 
             val response = api.syncData(request)
-            Log.d(TAG, "Sync response: $response")
+            Log.d(TAG, "Sync response: ${gson.toJson(response)}")
 
             Result.success(response)
         } catch (e: Exception) {
@@ -145,9 +144,6 @@ class SyncManager(
         }
     }
 
-    /**
-     * Синхронизация только одной книги
-     */
     suspend fun syncBook(bookId: Long, username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
         try {
             val book = bookRepository.get(bookId)
@@ -160,13 +156,13 @@ class SyncManager(
             val syncBook = SyncBookDTO(
                 identifier = book.identifier ?: generateBookIdentifier(book),
                 title = book.title ?: "",
-                author = book.author,
+                author = book.author ?: "",
                 totalPages = null,
                 language = null,
                 categoryId = null,
                 readingStats = stats.map { stat ->
                     SyncReadingStatDTO(
-                        date = stat.date,
+                        date = stat.date.toString(),
                         pagesRead = stat.pagesRead,
                         hoursRead = stat.hoursRead
                     )
@@ -184,7 +180,6 @@ class SyncManager(
     }
 
     private fun generateBookIdentifier(book: Book): String {
-        // Генерируем идентификатор на основе названия и автора
         val title = book.title ?: ""
         val author = book.author ?: ""
         val identifier = "${title}_${author}_${book.href.hashCode()}".hashCode().toString()
