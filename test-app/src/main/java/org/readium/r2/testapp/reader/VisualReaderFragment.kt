@@ -96,7 +96,12 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
 
     protected var binding: FragmentReaderBinding by viewLifecycle()
 
+
     private lateinit var navigatorFragment: Fragment
+
+    private var isPageIndicatorExpanded = false
+    private var currentPageNumber = 0
+    private var totalPagesNumber = 0
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -126,6 +131,7 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
             addInputListener(object : InputListener {
                 override fun onTap(event: TapEvent): Boolean {
                     requireActivity().toggleSystemUi()
+                    togglePageIndicator()
                     return true
                 }
             })
@@ -214,27 +220,37 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                 navigator.currentLocator
                     .filterNotNull()
                     .onEach { locator ->
-                        // Детальное логирование для PDF
-                        Timber.d("=== NAVIGATOR LOCATOR ===")
-                        Timber.d("href: ${locator.href}")
-                        Timber.d("position: ${locator.locations.position}")
-                        Timber.d("totalProgression: ${locator.locations.totalProgression}")
-                        Timber.d("mediaType: ${locator.mediaType}")
-
                         model.saveProgression(locator)
 
+                        // Обновляем отображение текущей страницы
                         val currentPage = model.calculateCurrentPage(locator)
                         val totalPages = model.totalPositions
-                        if (totalPages > 0) {
-                            binding.currentPageText?.text = "$currentPage / $totalPages"
-                        } else {
-                            binding.currentPageText?.text = currentPage.toString()
-                        }
+
+                        currentPageNumber = currentPage
+                        totalPagesNumber = totalPages
+
+                        updatePageIndicator(currentPage, totalPages)
                     }
                     .launchIn(this)
             }
         }
     }
+
+    private fun updatePageIndicator(currentPage: Int, totalPages: Int) {
+        val text = if (isPageIndicatorExpanded && totalPages > 0) {
+            "$currentPage / $totalPages"
+        } else {
+            currentPage.toString()
+        }
+        binding.currentPageText.text = text
+    }
+
+    private fun togglePageIndicator() {
+        isPageIndicatorExpanded = !isPageIndicatorExpanded
+        updatePageIndicator(currentPageNumber, totalPagesNumber)
+    }
+
+
 
     private suspend fun setupHighlights(scope: CoroutineScope) {
         (navigator as? DecorableNavigator)?.let { navigator ->
