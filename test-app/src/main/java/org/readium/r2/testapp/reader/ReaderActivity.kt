@@ -131,6 +131,8 @@ open class ReaderActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Запрещаем автоматическое выключение экрана
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Возобновляем таймер при возврате в активность
         Timber.d("ReaderActivity onResume - starting timer")
         startReadingTimer()
@@ -138,6 +140,8 @@ open class ReaderActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        // Восстанавливаем стандартное поведение
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Приостанавливаем таймер при уходе на задний план
         Timber.d("ReaderActivity onPause - pausing timer")
         pauseReadingTimer()
