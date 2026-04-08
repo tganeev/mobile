@@ -48,6 +48,7 @@ open class ReaderActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityReaderBinding
     private lateinit var readerFragment: BaseReaderFragment
+    private var wasInBackground = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,20 +132,24 @@ open class ReaderActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Запрещаем автоматическое выключение экрана
+        // Включаем блокировку экрана
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // Возобновляем таймер при возврате в активность
-        Timber.d("ReaderActivity onResume - starting timer")
-        //startReadingTimer()
+        // Таймер запускаем только если приложение возвращается из фона
+        if (wasInBackground) {
+            startReadingTimer()
+            wasInBackground = false
+        }
     }
 
     override fun onPause() {
         super.onPause()
-        // Восстанавливаем стандартное поведение
+        // Отключаем блокировку экрана
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // Приостанавливаем таймер при уходе на задний план
-        Timber.d("ReaderActivity onPause - pausing timer")
-        //pauseReadingTimer()
+        // Таймер останавливаем только при сворачивании (не при повороте)
+        if (!isChangingConfigurations) {
+            wasInBackground = true
+            pauseReadingTimer()
+        }
     }
 
     override fun onStop() {
