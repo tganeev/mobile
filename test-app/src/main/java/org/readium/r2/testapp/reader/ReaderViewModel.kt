@@ -109,13 +109,16 @@ class ReaderViewModel(
     private var _totalPositions: Int = 0
     val totalPositions: Int get() = _totalPositions
 
+    private var lastSavedTotalSeconds: Long = 0
+
     init {
         viewModelScope.launch {
             bookRepository.get(bookId)?.let { book ->
                 readingTimer.setTime(book.readingTime)
+                lastSavedTotalSeconds = book.readingTime // ✅ Инициализируем точку отсчета
                 lastSavedPage = book.pagesRead
                 maxReachedPage = book.pagesRead
-                Timber.d("Loaded stats for book $bookId: time=${book.readingTime}s, pages=${book.pagesRead}")
+                Timber.d("Loaded stats: time=${book.readingTime}s, pages=${book.pagesRead}")
             }
 
             try {
@@ -183,51 +186,52 @@ class ReaderViewModel(
     }
 
     private suspend fun savePagesAndTime() {
+        val currentTotalSeconds = readingTimer.elapsedSeconds.value
+        val deltaSeconds = (currentTotalSeconds - lastSavedTotalSeconds).coerceAtLeast(0)
+
+        // Если время не изменилось, нет смысла писать в БД
+        if (deltaSeconds == 0L) return
+
         val currentLocator = getCurrentLocator()
         val currentPage = calculateCurrentPage(currentLocator)
-        val currentTime = readingTimer.elapsedSeconds.value
+
+        // Обновляем максимум страниц
+        if (currentPage > maxReachedPage) maxReachedPage = currentPage
+        val incrementalPages = maxOf(0, maxReachedPage - lastSavedPage)
+
         val today = LocalDate.now()
-
-        Timber.d("savePagesAndTime - currentPage=$currentPage, currentTime=$currentTime")
-
-        // Обновляем максимальную достигнутую страницу
-        if (currentPage > maxReachedPage) {
-            maxReachedPage = currentPage
-        }
-
-        val displayPage = maxReachedPage
-        val incrementalPages = if (displayPage > lastSavedPage) {
-            displayPage - lastSavedPage
-        } else {
-            0
-        }
-
         val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
         val todayStat = existingStats.find { it.date == today }
 
-        if (incrementalPages > 0 || currentTime > 0) {
-            val readingStat = ReadingStat(
-                bookId = bookId,
-                date = today,
-                pagesRead = (todayStat?.pagesRead ?: 0) + incrementalPages,
-                hoursRead = currentTime / 3600.0
-            )
-            bookRepository.saveReadingStat(readingStat)
+        // 1. Сохраняем/обновляем запись за сегодня (для графиков и синхронизации)
+        val deltaHours = deltaSeconds / 3600.0
+        val newDailyHours = (todayStat?.hoursRead ?: 0.0) + deltaHours
+        val newDailyPages = (todayStat?.pagesRead ?: 0) + incrementalPages
 
-            val totalPages = bookRepository.getTotalPagesRead(bookId)
-            val totalHours = bookRepository.getTotalHoursRead(bookId)
+        bookRepository.saveReadingStat(ReadingStat(
+            bookId = bookId,
+            date = today,
+            pagesRead = newDailyPages,
+            hoursRead = newDailyHours
+        ))
 
-            bookRepository.updateReadingStats(
-                bookId = bookId,
-                readingTime = (totalHours * 3600).toLong(),
-                pagesRead = totalPages,
-                locator = currentLocator
-            )
+        // 2. Обновляем ОБЩЕЕ время на обложке НАПРЯМУЮ (без SUM, без потери точности)
+        val book = bookRepository.get(bookId)
+        val newTotalReadingTime = (book?.readingTime ?: 0L) + deltaSeconds
+        val newTotalPages = (book?.pagesRead ?: 0) + incrementalPages
 
-            Timber.d("Saved - Pages: +$incrementalPages (total: $totalPages), Time: ${currentTime}s")
-        }
+        bookRepository.updateReadingStats(
+            bookId = bookId,
+            readingTime = newTotalReadingTime,
+            pagesRead = newTotalPages,
+            locator = currentLocator
+        )
 
-        lastSavedPage = displayPage
+        Timber.d("Saved delta: ${deltaSeconds}s | Total now: ${newTotalReadingTime}s | Pages: +$incrementalPages")
+
+        // ✅ Сдвигаем точку отсчета на текущее время
+        lastSavedTotalSeconds = currentTotalSeconds
+        lastSavedPage = maxReachedPage
     }
 
     // ===== ЗАКЛАДКИ =====
@@ -413,7 +417,7 @@ class ReaderViewModel(
 
     override fun onCleared() {
         viewModelScope.launch {
-            savePagesAndTime()
+            savePagesAndTime() // ✅ Гарантированно сохраняем "хвост" времени перед уничтожением VM
         }
         readingTimer.pause()
         readerRepository.close(bookId)
