@@ -95,7 +95,7 @@ class BookRepository(
      */
     private suspend fun updateTotalReadingTime(bookId: Long) {
         val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
-        val totalSeconds = (totalHours * 3600).toLong()
+        val totalSeconds = (totalHours * 3600).toLong().coerceAtLeast(0)
         booksDao.updateBookReadingTime(bookId, totalSeconds)
         Timber.d("Total reading time updated: $totalSeconds seconds ($totalHours hours)")
     }
