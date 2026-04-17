@@ -1,69 +1,82 @@
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp
 
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
-import androidx.navigation.ui.setupWithNavController
-import com.google.android.material.bottomnavigation.BottomNavigationView
+import androidx.navigation.ui.navigateUp
+import org.readium.r2.testapp.databinding.ActivityMainBinding
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
-import org.readium.r2.testapp.sync.SyncManager
+import org.readium.r2.testapp.Application
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var binding: ActivityMainBinding
     private lateinit var navController: NavController
-    private val viewModel: MainViewModel by viewModels()
-    private lateinit var syncManager: SyncManager
+    private lateinit var appBarConfiguration: AppBarConfiguration
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContentView(R.layout.activity_main)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.container)) { v, insets ->
+
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.container) { v, insets ->
             val statusBars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             v.setPadding(statusBars.left, statusBars.top, statusBars.right, statusBars.bottom)
             insets
         }
 
-        val navView: BottomNavigationView = findViewById(R.id.nav_view)
-        val navHostFragment =
-            supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
+        // Получаем NavController
+        val navHostFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        val appBarConfiguration = AppBarConfiguration(
+        // Настройка ActionBar - только главное меню является верхним уровнем
+        appBarConfiguration = AppBarConfiguration(
             setOf(
-                R.id.navigation_bookshelf,
-                R.id.navigation_catalog_list,
-                R.id.navigation_about
+                R.id.menu_fragment
             )
         )
-        setupActionBarWithNavController(navController, appBarConfiguration)
-        navView.setupWithNavController(navController)
 
-        viewModel.channel.receive(this) { handleEvent(it) }
-        syncManager = SyncManager(this, (application as Application).bookRepository)
+        setupActionBarWithNavController(navController, appBarConfiguration)
+
+        // Обновляем меню при смене destination
+        navController.addOnDestinationChangedListener { _, _, _ ->
+            supportInvalidateOptionsMenu()
+        }
+
+        // Блокировка экрана
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.menu_main, menu)
-        return true
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        // Определяем текущий фрагмент
+        val navHostFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
+        val currentFragment = navHostFragment?.childFragmentManager?.fragments?.firstOrNull()
+
+        // Если текущий фрагмент - BookshelfFragment, показываем меню синхронизации
+        return when (currentFragment) {
+            is org.readium.r2.testapp.bookshelf.BookshelfFragment -> {
+                menuInflater.inflate(R.menu.menu_main, menu)
+                true
+            }
+            else -> {
+                // Для остальных фрагментов показываем пустое меню
+                false
+            }
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -79,7 +92,7 @@ class MainActivity : AppCompatActivity() {
     private fun performSync() {
         lifecycleScope.launch {
             val snackbar = Snackbar.make(
-                findViewById(android.R.id.content),
+                binding.root,
                 "Синхронизация...",
                 Snackbar.LENGTH_INDEFINITE
             )
@@ -99,13 +112,13 @@ class MainActivity : AppCompatActivity() {
                         "🔄 Обновлено записей: ${response.statsUpdated}"
 
                     Snackbar.make(
-                        findViewById(android.R.id.content),
+                        binding.root,
                         message,
                         Snackbar.LENGTH_LONG
                     ).show()
                 }.onFailure { error ->
                     Snackbar.make(
-                        findViewById(android.R.id.content),
+                        binding.root,
                         "Ошибка: ${error.message}",
                         Snackbar.LENGTH_LONG
                     ).show()
@@ -113,7 +126,7 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 snackbar.dismiss()
                 Snackbar.make(
-                    findViewById(android.R.id.content),
+                    binding.root,
                     "Ошибка: ${e.message}",
                     Snackbar.LENGTH_LONG
                 ).show()
@@ -121,34 +134,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        // Запрещаем автоматическое выключение экрана
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        // Восстанавливаем стандартное поведение
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-    }
-
     override fun onSupportNavigateUp(): Boolean {
-        return navController.navigateUp() || super.onSupportNavigateUp()
+        return navController.navigateUp(appBarConfiguration) || super.onSupportNavigateUp()
     }
 
-    private fun handleEvent(event: MainViewModel.Event) {
-        when (event) {
-            is MainViewModel.Event.ImportPublicationSuccess ->
-                Snackbar.make(
-                    findViewById(android.R.id.content),
-                    getString(R.string.import_publication_success),
-                    Snackbar.LENGTH_LONG
-                ).show()
-
-            is MainViewModel.Event.ImportPublicationError -> {
-                event.error.toUserError().show(this)
-            }
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 }

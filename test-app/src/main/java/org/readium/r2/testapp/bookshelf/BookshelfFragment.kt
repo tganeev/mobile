@@ -63,6 +63,11 @@ class BookshelfFragment : Fragment() {
         dialog.show(childFragmentManager, "EditBookDialog")
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setHasOptionsMenu(true)  // <-- эта строка должна быть
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -71,6 +76,8 @@ class BookshelfFragment : Fragment() {
         binding = FragmentBookshelfBinding.inflate(inflater, container, false)
         return binding.root
     }
+
+
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)

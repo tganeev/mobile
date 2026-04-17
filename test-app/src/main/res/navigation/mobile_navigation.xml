@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/mobile_navigation"
+    app:startDestination="@id/menu_fragment">
+
+    <fragment
+        android:id="@+id/menu_fragment"
+        android:name="org.readium.r2.testapp.ui.menu.MenuFragment"
+        android:label="MindFrame"
+        tools:layout="@layout/fragment_menu" />
+
+    <fragment
+        android:id="@+id/bookshelf_fragment"
+        android:name="org.readium.r2.testapp.bookshelf.BookshelfFragment"
+        android:label="Читалка"
+        tools:layout="@layout/fragment_bookshelf" />
+
+    <action
+        android:id="@+id/action_menu_to_bookshelf"
+        app:destination="@id/bookshelf_fragment" />
+
+</navigation>
