@@ -7,6 +7,8 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlin.reflect.KClass
+import kotlin.reflect.KClassifier
 import org.readium.r2.testapp.data.model.*
 
 @Database(
@@ -15,9 +17,10 @@ import org.readium.r2.testapp.data.model.*
         Bookmark::class,
         Highlight::class,
         Catalog::class,
-        ReadingStat::class
+        ReadingStat::class,
+        SleepRecord::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(HighlightConverters::class, Converters::class) // Добавляем Converters
@@ -25,6 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun booksDao(): BooksDao
     abstract fun catalogDao(): CatalogDao
+    abstract fun sleepDao(): SleepDao
 
     companion object {
         @Volatile
@@ -37,7 +41,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                 INSTANCE = instance
                 instance
@@ -74,6 +78,25 @@ abstract class AppDatabase : RoomDatabase() {
                 // Создаем индексы
                 database.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_book_id ON reading_stats(book_id)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_date ON reading_stats(date)")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+            CREATE TABLE IF NOT EXISTS sleep_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                date TEXT NOT NULL UNIQUE,
+                wake_time TEXT,
+                bed_time TEXT,
+                is_manual INTEGER NOT NULL DEFAULT 0,
+                synced INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+        """)
+                database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_date ON sleep_records(date)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_synced ON sleep_records(synced)")
             }
         }
     }

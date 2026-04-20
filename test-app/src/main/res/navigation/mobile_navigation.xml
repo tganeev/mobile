@@ -14,11 +14,26 @@
     <fragment
         android:id="@+id/bookshelf_fragment"
         android:name="org.readium.r2.testapp.bookshelf.BookshelfFragment"
-        android:label="Читалка"
+        android:label="Библиотека"
         tools:layout="@layout/fragment_bookshelf" />
 
     <action
         android:id="@+id/action_menu_to_bookshelf"
         app:destination="@id/bookshelf_fragment" />
+
+    <!-- НАВИГАЦИЯ К БУДИЛЬНИКУ -->
+    <fragment
+        android:id="@+id/alarm_fragment"
+        android:name="org.readium.r2.testapp.alarm.AlarmFragment"
+        android:label="Будильник"
+        tools:layout="@layout/fragment_alarm" />
+
+    <action
+        android:id="@+id/action_menu_to_bookshelf"
+        app:destination="@id/bookshelf_fragment" />
+
+    <action
+        android:id="@+id/action_menu_to_alarm"
+        app:destination="@id/alarm_fragment" />
 
 </navigation>

@@ -1,9 +1,3 @@
-/*
- * Copyright 2022 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp
 
 import android.content.Context
@@ -13,13 +7,15 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.google.android.material.color.DynamicColors
-import java.io.File
-import java.util.Properties
-import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
 import org.readium.r2.testapp.BuildConfig.DEBUG
+import org.readium.r2.testapp.alarm.AlarmScheduler
+import org.readium.r2.testapp.data.AlarmPreferencesDataStore
 import org.readium.r2.testapp.data.BookRepository
+import org.readium.r2.testapp.data.SleepRepository
 import org.readium.r2.testapp.data.db.AppDatabase
 import org.readium.r2.testapp.domain.Bookshelf
 import org.readium.r2.testapp.domain.CoverStorage
@@ -28,6 +24,9 @@ import org.readium.r2.testapp.reader.ReaderRepository
 import org.readium.r2.testapp.sync.SyncManager
 import org.readium.r2.testapp.utils.tryOrLog
 import timber.log.Timber
+import java.io.File
+import java.util.Properties
+import java.util.concurrent.Executors
 
 class Application : android.app.Application() {
 
@@ -48,8 +47,13 @@ class Application : android.app.Application() {
     lateinit var syncManager: SyncManager
         private set
 
-    private val coroutineScope: CoroutineScope =
-        MainScope()
+    lateinit var alarmPreferencesDataStore: AlarmPreferencesDataStore
+        private set
+
+    lateinit var sleepRepository: SleepRepository
+        private set
+
+    private val coroutineScope: CoroutineScope = MainScope()
 
     private val Context.navigatorPreferences: DataStore<Preferences>
         by preferencesDataStore(name = "navigator-preferences")
@@ -71,30 +75,28 @@ class Application : android.app.Application() {
         val database = AppDatabase.getDatabase(this)
 
         bookRepository = BookRepository(database.booksDao())
+        sleepRepository = SleepRepository(database.sleepDao())
+        alarmPreferencesDataStore = AlarmPreferencesDataStore(this)
 
         val downloadsDir = File(cacheDir, "downloads")
-
-        // Cleans the download dir.
         tryOrLog { downloadsDir.delete() }
 
-        val publicationRetriever =
-            PublicationRetriever(
-                context = applicationContext,
-                assetRetriever = readium.assetRetriever,
-                bookshelfDir = storageDir,
-                tempDir = downloadsDir,
-                httpClient = readium.httpClient,
-                lcpService = readium.lcpService.getOrNull()
-            )
+        val publicationRetriever = PublicationRetriever(
+            context = applicationContext,
+            assetRetriever = readium.assetRetriever,
+            bookshelfDir = storageDir,
+            tempDir = downloadsDir,
+            httpClient = readium.httpClient,
+            lcpService = readium.lcpService.getOrNull()
+        )
 
-        bookshelf =
-            Bookshelf(
-                bookRepository,
-                CoverStorage(storageDir, httpClient = readium.httpClient),
-                readium.publicationOpener,
-                readium.assetRetriever,
-                publicationRetriever
-            )
+        bookshelf = Bookshelf(
+            bookRepository,
+            CoverStorage(storageDir, httpClient = readium.httpClient),
+            readium.publicationOpener,
+            readium.assetRetriever,
+            publicationRetriever
+        )
 
         readerRepository = ReaderRepository(
             this@Application,
@@ -104,14 +106,20 @@ class Application : android.app.Application() {
         )
 
         syncManager = SyncManager(this, bookRepository)
+
+        // Восстанавливаем будильники после установки приложения
+        coroutineScope.launch(Dispatchers.IO) {
+            alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
+                AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
+            }
+        }
     }
 
     private fun computeStorageDir(): File {
         val properties = Properties()
         val inputStream = assets.open("configs/config.properties")
         properties.load(inputStream)
-        val useExternalFileDir =
-            properties.getProperty("useExternalFileDir", "false")!!.toBoolean()
+        val useExternalFileDir = properties.getProperty("useExternalFileDir", "false")!!.toBoolean()
 
         return File(
             if (useExternalFileDir) {
@@ -122,10 +130,6 @@ class Application : android.app.Application() {
         )
     }
 
-    /**
-     * Strict mode will log violation of VM and threading policy.
-     * Use it to make sure the app doesn't do too much work on the main thread.
-     */
     private fun enableStrictMode() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return
@@ -138,7 +142,6 @@ class Application : android.app.Application() {
                 .penaltyListener(executor) { violation ->
                     Timber.e(violation, "Thread policy violation")
                 }
-//                .penaltyDeath()
                 .build()
         )
         StrictMode.setVmPolicy(
@@ -147,7 +150,6 @@ class Application : android.app.Application() {
                 .penaltyListener(executor) { violation ->
                     Timber.e(violation, "VM policy violation")
                 }
-//                .penaltyDeath()
                 .build()
         )
     }

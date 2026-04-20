@@ -43,31 +43,42 @@ class MenuFragment : Fragment() {
 
     private fun loadModules() {
         val modules = listOf(
-            Module(1, "Читалка", R.drawable.ic_module_reader, isAvailable = true),
+            Module(1, "Библиотека", R.drawable.ic_module_reader, isAvailable = true),
             Module(2, "Математика", R.drawable.ic_module_math, isAvailable = false),
-            Module(3, "Будильник", R.drawable.ic_module_alarm, isAvailable = false),
+            Module(3, "Будильник", R.drawable.ic_module_alarm, isAvailable = true),
             Module(4, "Состояния", R.drawable.ic_module_emotions, isAvailable = false),
             Module(5, "Календарь", R.drawable.ic_module_calendar, isAvailable = false),
             Module(6, "Банк слов", R.drawable.ic_module_vocabulary, isAvailable = false),
-            Module(7, "Банк заметок", R.drawable.ic_module_notes, isAvailable = false),
+            Module(7, "Заметки", R.drawable.ic_module_notes, isAvailable = false),
             Module(8, "Вокал", R.drawable.ic_module_vocal, isAvailable = false)
         )
         modulesAdapter.submitList(modules)
     }
 
     private fun handleModuleClick(module: Module) {
-        if (module.id == 1 && module.isAvailable) {
-            // Читалка — доступна, переходим в BookshelfFragment
-            val navController = requireActivity().findNavController(R.id.nav_host_fragment)
-            navController.navigate(R.id.action_menu_to_bookshelf)
-        } else {
-            // Заглушка для неготовых модулей
-            Snackbar.make(
-                binding.root,
-                "Модуль «${module.title}» в разработке",
-                Snackbar.LENGTH_SHORT
-            ).show()
+        when (module.id) {
+            1 -> navigateToReader()
+            3 -> navigateToAlarm()
+            else -> showUnderDevelopmentMessage(module)
         }
+    }
+
+    private fun navigateToReader() {
+        val navController = requireActivity().findNavController(R.id.nav_host_fragment)
+        navController.navigate(R.id.action_menu_to_bookshelf)
+    }
+
+    private fun navigateToAlarm() {
+        val navController = requireActivity().findNavController(R.id.nav_host_fragment)
+        navController.navigate(R.id.action_menu_to_alarm)
+    }
+
+    private fun showUnderDevelopmentMessage(module: Module) {
+        Snackbar.make(
+            binding.root,
+            "Модуль «${module.title}» в разработке",
+            Snackbar.LENGTH_SHORT
+        ).show()
     }
 
     override fun onDestroyView() {
