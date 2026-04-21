@@ -3,6 +3,7 @@ package org.readium.r2.testapp.alarm
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,6 +13,8 @@ import org.readium.r2.testapp.Application as App
 import org.readium.r2.testapp.data.AlarmPreferencesDataStore
 import java.time.LocalTime
 import org.readium.r2.testapp.alarm.AlarmScheduler
+import kotlinx.coroutines.flow.Flow
+import org.readium.r2.testapp.data.model.SleepRecord
 
 class AlarmViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -20,6 +23,7 @@ class AlarmViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _toastMessage = MutableStateFlow("")
     val toastMessage = _toastMessage.asStateFlow()
+    val allSleepRecords: Flow<List<SleepRecord>> = app.sleepRepository.getAllRecords()
 
     // Исправлено: полный путь к AlarmPreferences
     val alarmPreferences = preferences.alarmPreferencesFlow
@@ -81,5 +85,45 @@ class AlarmViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toastCleared() {
         _toastMessage.value = ""
+    }
+
+    fun saveWakeTimeManual(date: LocalDate, time: LocalTime) {
+        viewModelScope.launch {
+            try {
+                app.sleepRepository.saveWakeTime(date, time, isManual = true)
+                _toastMessage.value = "Время подъёма сохранено"
+            } catch (e: Exception) {
+                _toastMessage.value = "Ошибка: ${e.message}"
+            }
+        }
+    }
+
+    fun saveBedTimeManual(date: LocalDate, time: LocalTime) {
+        viewModelScope.launch {
+            try {
+                app.sleepRepository.saveBedTime(date, time, isManual = true)
+                _toastMessage.value = "Время отбоя сохранено"
+            } catch (e: Exception) {
+                _toastMessage.value = "Ошибка: ${e.message}"
+            }
+        }
+    }
+
+    fun deleteSleepRecord(id: Long) {
+        viewModelScope.launch {
+            app.sleepRepository.deleteRecord(id)
+            _toastMessage.value = "Запись удалена"
+        }
+    }
+
+    fun updateSleepRecord(id: Long, date: LocalDate, wakeTime: LocalTime?, bedTime: LocalTime?) {
+        viewModelScope.launch {
+            try {
+                app.sleepRepository.updateSleepRecord(id, date, wakeTime, bedTime)
+                _toastMessage.value = "Запись обновлена"
+            } catch (e: Exception) {
+                _toastMessage.value = "Ошибка: ${e.message}"
+            }
+        }
     }
 }

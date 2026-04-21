@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
@@ -26,6 +27,9 @@ class AlarmFragment : Fragment() {
 
     private val viewModel: AlarmViewModel by viewModels()
 
+    private var isUpdatingMorningFromCode = false
+    private var isUpdatingEveningFromCode = false
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -45,26 +49,33 @@ class AlarmFragment : Fragment() {
     }
 
     private fun setupTimePickers() {
-        // Устанавливаем режим спиннера для TimePicker (более удобный)
         binding.morningTimePicker.setIs24HourView(true)
         binding.eveningTimePicker.setIs24HourView(true)
     }
 
     private fun setupListeners() {
         binding.morningAlarmSwitch.setOnCheckedChangeListener { _, isChecked ->
-            viewModel.updateMorningAlarmEnabled(isChecked)
+            if (!isUpdatingMorningFromCode) {
+                viewModel.updateMorningAlarmEnabled(isChecked)
+            }
         }
 
         binding.eveningAlarmSwitch.setOnCheckedChangeListener { _, isChecked ->
-            viewModel.updateEveningAlarmEnabled(isChecked)
+            if (!isUpdatingEveningFromCode) {
+                viewModel.updateEveningAlarmEnabled(isChecked)
+            }
         }
 
         binding.morningTimePicker.setOnTimeChangedListener { _, hour, minute ->
-            viewModel.updateMorningTime(hour, minute)
+            if (!isUpdatingMorningFromCode) {
+                viewModel.updateMorningTime(hour, minute)
+            }
         }
 
         binding.eveningTimePicker.setOnTimeChangedListener { _, hour, minute ->
-            viewModel.updateEveningTime(hour, minute)
+            if (!isUpdatingEveningFromCode) {
+                viewModel.updateEveningTime(hour, minute)
+            }
         }
 
         binding.historyButton.setOnClickListener {
@@ -83,14 +94,17 @@ class AlarmFragment : Fragment() {
     private fun observeViewModel() {
         lifecycleScope.launch {
             viewModel.alarmPreferences.collect { prefs ->
+                isUpdatingMorningFromCode = true
                 binding.morningAlarmSwitch.isChecked = prefs.isMorningEnabled
-                binding.eveningAlarmSwitch.isChecked = prefs.isEveningEnabled
-
                 binding.morningTimePicker.hour = prefs.morningTime.hour
                 binding.morningTimePicker.minute = prefs.morningTime.minute
+                isUpdatingMorningFromCode = false
 
+                isUpdatingEveningFromCode = true
+                binding.eveningAlarmSwitch.isChecked = prefs.isEveningEnabled
                 binding.eveningTimePicker.hour = prefs.eveningTime.hour
                 binding.eveningTimePicker.minute = prefs.eveningTime.minute
+                isUpdatingEveningFromCode = false
             }
         }
 
@@ -112,14 +126,26 @@ class AlarmFragment : Fragment() {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
                     Для точной работы будильника необходимо разрешение на планирование точных будильников.
-                    Это позволит будильнику срабатывать даже в режиме энергосбережения.
+                    Разрешите показ поверх других приложений для работы будильника на заблокированном экране.
                 """.trimIndent()
-            } else {
-                binding.permissionWarningCard.visibility = View.GONE
+                return
             }
-        } else {
-            binding.permissionWarningCard.visibility = View.GONE
         }
+
+        // Проверка разрешения на игнорирование оптимизации батареи
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = requireContext().getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(requireContext().packageName)) {
+                binding.permissionWarningCard.visibility = View.VISIBLE
+                binding.permissionWarningText.text = """
+                    Для работы будильника в фоновом режиме необходимо отключить оптимизацию батареи для этого приложения.
+                    Нажмите "Настроить" и выберите "Не оптимизировать".
+                """.trimIndent()
+                return
+            }
+        }
+
+        binding.permissionWarningCard.visibility = View.GONE
     }
 
     private fun openAlarmSettings() {
@@ -127,16 +153,21 @@ class AlarmFragment : Fragment() {
             val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
             startActivity(intent)
         }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            startActivity(intent)
+        }
     }
 
     private fun navigateToHistory() {
-        // TODO: Реализовать в Спринте 5
-        Snackbar.make(binding.root, "История пока в разработке", Snackbar.LENGTH_SHORT).show()
+        val navController = requireView().findNavController()
+        navController.navigate(R.id.action_alarm_to_stats)
     }
 
     private fun showManualEntryDialog() {
-        // TODO: Реализовать в Спринте 5
-        Snackbar.make(binding.root, "Ручной ввод пока в разработке", Snackbar.LENGTH_SHORT).show()
+        navigateToHistory()
+        Snackbar.make(binding.root, "Нажмите на кнопку + в статистике", Snackbar.LENGTH_LONG).show()
     }
 
     override fun onDestroyView() {

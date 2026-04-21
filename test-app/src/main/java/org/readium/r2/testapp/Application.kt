@@ -27,6 +27,7 @@ import timber.log.Timber
 import java.io.File
 import java.util.Properties
 import java.util.concurrent.Executors
+import org.readium.r2.testapp.alarm.AlarmForegroundService
 
 class Application : android.app.Application() {
 
@@ -113,6 +114,11 @@ class Application : android.app.Application() {
                 AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
             }
         }
+        // Запускаем Foreground Service для будильника
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AlarmForegroundService.start(this)
+        }
+
     }
 
     private fun computeStorageDir(): File {

@@ -21,12 +21,19 @@ class SleepRepository(
     suspend fun saveWakeTime(date: LocalDate, wakeTime: LocalTime, isManual: Boolean = false) {
         val existing = sleepDao.getRecordByDate(date)
         if (existing != null) {
-            sleepDao.updateRecord(existing.withWakeTime(wakeTime, isManual))
+            val updated = existing.copy(
+                wakeTime = wakeTime,
+                isManual = isManual || existing.isManual,
+                updatedAt = System.currentTimeMillis(),
+                synced = false
+            )
+            sleepDao.updateRecord(updated)
         } else {
             val record = SleepRecord(
                 date = date,
                 wakeTime = wakeTime,
-                isManual = isManual
+                isManual = isManual,
+                synced = false
             )
             sleepDao.insertRecord(record)
         }
@@ -35,12 +42,19 @@ class SleepRepository(
     suspend fun saveBedTime(date: LocalDate, bedTime: LocalTime, isManual: Boolean = false) {
         val existing = sleepDao.getRecordByDate(date)
         if (existing != null) {
-            sleepDao.updateRecord(existing.withBedTime(bedTime, isManual))
+            val updated = existing.copy(
+                bedTime = bedTime,
+                isManual = isManual || existing.isManual,
+                updatedAt = System.currentTimeMillis(),
+                synced = false
+            )
+            sleepDao.updateRecord(updated)
         } else {
             val record = SleepRecord(
                 date = date,
                 bedTime = bedTime,
-                isManual = isManual
+                isManual = isManual,
+                synced = false
             )
             sleepDao.insertRecord(record)
         }
@@ -74,5 +88,73 @@ class SleepRepository(
         }
 
         return durationMinutes.toLong()
+    }
+
+    /**
+     * Отмечает, что пользователь пропустил фиксацию времени отбоя
+     * (выбрал "Не ложусь" и больше не указал время)
+     */
+    suspend fun markBedTimeAsMissing(date: LocalDate) {
+        val existing = sleepDao.getRecordByDate(date)
+        if (existing != null) {
+            // Если запись уже существует, просто помечаем, что время не указано
+            // (оставляем bedTime = null, но можно добавить флаг isMissing)
+            val updated = existing.copy(
+                bedTime = null,
+                isManual = false,
+                updatedAt = System.currentTimeMillis(),
+                synced = false
+            )
+            sleepDao.updateRecord(updated)
+        } else {
+            // Создаём запись с null для bedTime (означает "пропущено")
+            val record = SleepRecord(
+                date = date,
+                bedTime = null,
+                isManual = false,
+                synced = false
+            )
+            sleepDao.insertRecord(record)
+        }
+    }
+
+    /**
+     * Отмечает, что пользователь пропустил фиксацию времени подъёма
+     * (выбрал "Остаюсь лежать" и больше не указал время)
+     */
+    suspend fun markWakeTimeAsMissing(date: LocalDate) {
+        val existing = sleepDao.getRecordByDate(date)
+        if (existing != null) {
+            val updated = existing.copy(
+                wakeTime = null,
+                isManual = false,
+                updatedAt = System.currentTimeMillis(),
+                synced = false
+            )
+            sleepDao.updateRecord(updated)
+        } else {
+            val record = SleepRecord(
+                date = date,
+                wakeTime = null,
+                isManual = false,
+                synced = false
+            )
+            sleepDao.insertRecord(record)
+        }
+    }
+
+    suspend fun updateSleepRecord(id: Long, date: LocalDate, wakeTime: LocalTime?, bedTime: LocalTime?) {
+        val existing = sleepDao.getRecordById(id)
+        if (existing != null) {
+            val updated = existing.copy(
+                date = date,
+                wakeTime = wakeTime,
+                bedTime = bedTime,
+                isManual = true,  // Отмечаем как ручное редактирование
+                updatedAt = System.currentTimeMillis(),
+                synced = false
+            )
+            sleepDao.updateRecord(updated)
+        }
     }
 }

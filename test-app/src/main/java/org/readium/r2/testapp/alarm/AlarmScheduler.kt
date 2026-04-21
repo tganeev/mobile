@@ -32,11 +32,11 @@ object AlarmScheduler {
 
     private fun scheduleAlarm(context: Context, time: LocalTime, requestCode: Int, type: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
         val triggerTime = calculateTriggerTime(time)
 
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("alarm_type", type)
+            addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -46,24 +46,17 @@ object AlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            alarmManager.setExact(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
-        } else {
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                triggerTime,
-                pendingIntent
-            )
+        try {
+            // Используем setAlarmClock для максимального приоритета
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                val alarmInfo = AlarmManager.AlarmClockInfo(triggerTime, pendingIntent)
+                alarmManager.setAlarmClock(alarmInfo, pendingIntent)
+                android.util.Log.d("AlarmScheduler", "Alarm set with setAlarmClock at ${java.util.Date(triggerTime)}")
+            } else {
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AlarmScheduler", "Failed to schedule alarm", e)
         }
     }
 
@@ -138,4 +131,6 @@ object AlarmScheduler {
         scheduleMorningAlarm(context, prefs.morningTime, prefs.isMorningEnabled)
         scheduleEveningAlarm(context, prefs.eveningTime, prefs.isEveningEnabled)
     }
+
+
 }

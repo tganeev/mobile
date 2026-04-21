@@ -5,29 +5,35 @@
     android:id="@+id/mobile_navigation"
     app:startDestination="@id/menu_fragment">
 
+    <!-- Главное меню -->
     <fragment
         android:id="@+id/menu_fragment"
         android:name="org.readium.r2.testapp.ui.menu.MenuFragment"
-        android:label="Главная"
+        android:label="PKMS"
         tools:layout="@layout/fragment_menu" />
 
+    <!-- Читалка (Bookshelf) -->
     <fragment
         android:id="@+id/bookshelf_fragment"
         android:name="org.readium.r2.testapp.bookshelf.BookshelfFragment"
-        android:label="Библиотека"
+        android:label="Читалка"
         tools:layout="@layout/fragment_bookshelf" />
 
-    <action
-        android:id="@+id/action_menu_to_bookshelf"
-        app:destination="@id/bookshelf_fragment" />
-
-    <!-- НАВИГАЦИЯ К БУДИЛЬНИКУ -->
+    <!-- Будильник - настройки -->
     <fragment
         android:id="@+id/alarm_fragment"
         android:name="org.readium.r2.testapp.alarm.AlarmFragment"
         android:label="Будильник"
         tools:layout="@layout/fragment_alarm" />
 
+    <!-- Будильник - статистика -->
+    <fragment
+        android:id="@+id/sleepStatsFragment"
+        android:name="org.readium.r2.testapp.alarm.SleepStatsFragment"
+        android:label="Статистика сна"
+        tools:layout="@layout/fragment_sleep_stats" />
+
+    <!-- Действия (actions) -->
     <action
         android:id="@+id/action_menu_to_bookshelf"
         app:destination="@id/bookshelf_fragment" />
@@ -35,5 +41,9 @@
     <action
         android:id="@+id/action_menu_to_alarm"
         app:destination="@id/alarm_fragment" />
+
+    <action
+        android:id="@+id/action_alarm_to_stats"
+        app:destination="@id/sleepStatsFragment" />
 
 </navigation>
