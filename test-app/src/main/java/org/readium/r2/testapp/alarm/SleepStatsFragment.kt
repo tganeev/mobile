@@ -3,6 +3,7 @@ package org.readium.r2.testapp.alarm
 import android.app.AlertDialog
 import android.app.DatePickerDialog
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -71,12 +72,14 @@ class SleepStatsFragment : Fragment() {
         val wakeTimeInput = dialogView.findViewById<EditText>(R.id.wakeTimeInput)
         val bedTimeInput = dialogView.findViewById<EditText>(R.id.bedTimeInput)
 
-        // Заполняем существующими значениями
-        dateInput.setText(record.date.toString())
-        dateInput.isEnabled = false  // Дату менять нельзя
+        wakeTimeInput.hint = "ЧЧ:ММ (например 07:30)"
+        bedTimeInput.hint = "ЧЧ:ММ (например 23:00)"
 
-        wakeTimeInput.setText(record.wakeTime?.toString() ?: "")
-        bedTimeInput.setText(record.bedTime?.toString() ?: "")
+        dateInput.setText(record.date.toString())
+        dateInput.isEnabled = false
+
+        wakeTimeInput.setText(record.wakeTime?.let { String.format("%02d:%02d", it.hour, it.minute) } ?: "")
+        bedTimeInput.setText(record.bedTime?.let { String.format("%02d:%02d", it.hour, it.minute) } ?: "")
 
         AlertDialog.Builder(requireContext())
             .setTitle("Редактировать запись за ${record.date}")
@@ -87,13 +90,20 @@ class SleepStatsFragment : Fragment() {
 
                 lifecycleScope.launch {
                     try {
-                        val wakeTime = if (wakeTimeStr.isNotEmpty()) LocalTime.parse(wakeTimeStr) else null
-                        val bedTime = if (bedTimeStr.isNotEmpty()) LocalTime.parse(bedTimeStr) else null
+                        val wakeTime = if (wakeTimeStr.isNotEmpty() && wakeTimeStr.matches(Regex("\\d{2}:\\d{2}"))) {
+                            val parts = wakeTimeStr.split(":")
+                            LocalTime.of(parts[0].toInt(), parts[1].toInt())
+                        } else null
+
+                        val bedTime = if (bedTimeStr.isNotEmpty() && bedTimeStr.matches(Regex("\\d{2}:\\d{2}"))) {
+                            val parts = bedTimeStr.split(":")
+                            LocalTime.of(parts[0].toInt(), parts[1].toInt())
+                        } else null
 
                         viewModel.updateSleepRecord(record.id, record.date, wakeTime, bedTime)
                         Snackbar.make(binding.root, "Запись обновлена", Snackbar.LENGTH_SHORT).show()
                     } catch (e: Exception) {
-                        Snackbar.make(binding.root, "Ошибка: ${e.message}", Snackbar.LENGTH_LONG).show()
+                        Snackbar.make(binding.root, "Ошибка: неверный формат времени. Используйте ЧЧ:ММ", Snackbar.LENGTH_LONG).show()
                     }
                 }
             }
@@ -112,6 +122,9 @@ class SleepStatsFragment : Fragment() {
             viewModel.allSleepRecords.collect { records ->
                 adapter.submitList(records)
                 updateStatistics(records)
+
+                // Прокручиваем к началу списка (к самой свежей записи)
+                binding.sleepRecordsRecycler.scrollToPosition(0)
             }
         }
     }
@@ -120,18 +133,28 @@ class SleepStatsFragment : Fragment() {
         var totalDuration = 0L
         var countWithBoth = 0
 
-        for (i in records.indices) {
-            val record = records[i]
-            val bedTime = record.bedTime
-            if (bedTime != null && i + 1 < records.size) {
-                val nextRecord = records[i + 1]
-                val wakeTime = nextRecord.wakeTime
-                if (wakeTime != null) {
-                    val duration = calculateDurationMinutes(bedTime, wakeTime)
-                    if (duration > 0) {
-                        totalDuration += duration
-                        countWithBoth++
-                    }
+        val sortedOldToNew = records.sortedBy { it.date }
+
+        for (i in 0 until sortedOldToNew.size - 1) {
+            val currentRecord = sortedOldToNew[i]
+            val nextRecord = sortedOldToNew[i + 1]
+
+            val bedTime = currentRecord.bedTime
+            val wakeTime = nextRecord.wakeTime
+
+            if (bedTime != null && wakeTime != null) {
+                val bedMinutes = bedTime.hour * 60 + bedTime.minute
+                val wakeMinutes = wakeTime.hour * 60 + wakeTime.minute
+
+                val durationMinutes = if (wakeMinutes >= bedMinutes) {
+                    wakeMinutes - bedMinutes
+                } else {
+                    (24 * 60 - bedMinutes) + wakeMinutes
+                }
+
+                if (durationMinutes > 0 && durationMinutes < 24 * 60) {
+                    totalDuration += durationMinutes
+                    countWithBoth++
                 }
             }
         }
@@ -161,11 +184,26 @@ class SleepStatsFragment : Fragment() {
         val wakeTimeInput = dialogView.findViewById<EditText>(R.id.wakeTimeInput)
         val bedTimeInput = dialogView.findViewById<EditText>(R.id.bedTimeInput)
 
-        // Предзаполняем сегодняшней датой в формате yyyy-MM-dd
         val today = LocalDate.now()
         dateInput.setText(String.format("%04d-%02d-%02d", today.year, today.monthValue, today.dayOfMonth))
 
-        // DatePicker по клику на поле даты
+        // Очищаем hint и устанавливаем пустой текст
+        wakeTimeInput.setText("")
+        bedTimeInput.setText("")
+
+        // Убираем hint, когда получаем фокус
+        wakeTimeInput.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && wakeTimeInput.text.toString() == "--:--") {
+                wakeTimeInput.setText("")
+            }
+        }
+
+        bedTimeInput.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus && bedTimeInput.text.toString() == "--:--") {
+                bedTimeInput.setText("")
+            }
+        }
+
         dateInput.setOnClickListener {
             val datePicker = DatePickerDialog(
                 requireContext(),
@@ -189,31 +227,21 @@ class SleepStatsFragment : Fragment() {
                 val bedTimeStr = bedTimeInput.text.toString().trim()
 
                 try {
-                    // Парсим дату
                     val date = LocalDate.parse(dateStr)
 
-                    // Парсим время подъёма (ожидаем формат HH:MM)
-                    val wakeTime = if (wakeTimeStr.isNotEmpty()) {
+                    val wakeTime = if (wakeTimeStr.isNotEmpty() && wakeTimeStr.matches(Regex("\\d{2}:\\d{2}"))) {
                         val parts = wakeTimeStr.split(":")
-                        if (parts.size == 2) {
-                            LocalTime.of(parts[0].toInt(), parts[1].toInt())
-                        } else {
-                            null
-                        }
-                    } else {
-                        null
-                    }
+                        LocalTime.of(parts[0].toInt(), parts[1].toInt())
+                    } else null
 
-                    // Парсим время отбоя (ожидаем формат HH:MM)
-                    val bedTime = if (bedTimeStr.isNotEmpty()) {
+                    val bedTime = if (bedTimeStr.isNotEmpty() && bedTimeStr.matches(Regex("\\d{2}:\\d{2}"))) {
                         val parts = bedTimeStr.split(":")
-                        if (parts.size == 2) {
-                            LocalTime.of(parts[0].toInt(), parts[1].toInt())
-                        } else {
-                            null
-                        }
-                    } else {
-                        null
+                        LocalTime.of(parts[0].toInt(), parts[1].toInt())
+                    } else null
+
+                    if (wakeTime == null && bedTime == null) {
+                        Snackbar.make(binding.root, "Укажите хотя бы одно время в формате ЧЧ:ММ", Snackbar.LENGTH_LONG).show()
+                        return@setPositiveButton
                     }
 
                     lifecycleScope.launch {
@@ -224,16 +252,10 @@ class SleepStatsFragment : Fragment() {
                             viewModel.saveBedTimeManual(date, bedTime)
                         }
                         Snackbar.make(binding.root, "Запись сохранена", Snackbar.LENGTH_SHORT).show()
-
-                        // Очищаем поля
-                        dateInput.setText("")
-                        wakeTimeInput.setText("")
-                        bedTimeInput.setText("")
                     }
 
                 } catch (e: Exception) {
-                    e.printStackTrace()
-                    Snackbar.make(binding.root, "Ошибка: ${e.message}", Snackbar.LENGTH_LONG).show()
+                    Snackbar.make(binding.root, "Ошибка: неверный формат", Snackbar.LENGTH_LONG).show()
                 }
             }
             .setNegativeButton("Отмена", null)

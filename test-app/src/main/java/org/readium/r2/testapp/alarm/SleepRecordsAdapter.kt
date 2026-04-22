@@ -12,11 +12,53 @@ class SleepRecordsAdapter(
     private val onItemLongClick: (SleepRecord) -> Unit
 ) : RecyclerView.Adapter<SleepRecordsAdapter.ViewHolder>() {
 
-    private var records: List<SleepRecord> = emptyList()
+    private var records: List<SleepRecord> = emptyList()      // Для отображения (новые сверху)
+    private var recordsAsc: List<SleepRecord> = emptyList()   // Для расчёта (старые сверху)
+
+    private val dateFormatter = DateTimeFormatter.ofPattern("dd MMMM yyyy", java.util.Locale("ru"))
 
     fun submitList(list: List<SleepRecord>) {
+        // Для отображения: новые сверху
         records = list.sortedByDescending { it.date }
+        // Для расчёта сна: старые сверху
+        recordsAsc = list.sortedBy { it.date }
         notifyDataSetChanged()
+    }
+
+    /**
+     * Рассчитывает продолжительность сна (используя сортировку по возрастанию)
+     */
+    private fun calculateSleepDuration(record: SleepRecord): String {
+        // Находим позицию записи в списке для расчёта (по возрастанию)
+        val position = recordsAsc.indexOfFirst { it.id == record.id }
+        if (position == -1) return "--:--"
+
+        val currentRecord = recordsAsc[position]
+
+        val bedTime = currentRecord.bedTime
+        if (bedTime == null) return "--:--"
+
+        // Ищем следующую запись с подъёмом
+        for (i in (position + 1) until recordsAsc.size) {
+            val nextRecord = recordsAsc[i]
+            val wakeTime = nextRecord.wakeTime
+            if (wakeTime != null) {
+                val bedMinutes = bedTime.hour * 60 + bedTime.minute
+                val wakeMinutes = wakeTime.hour * 60 + wakeTime.minute
+
+                val durationMinutes = if (wakeMinutes >= bedMinutes) {
+                    wakeMinutes - bedMinutes
+                } else {
+                    (24 * 60 - bedMinutes) + wakeMinutes
+                }
+
+                val hours = durationMinutes / 60
+                val minutes = durationMinutes % 60
+                return "${hours}ч ${minutes}мин"
+            }
+        }
+
+        return "--:--"
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -25,11 +67,13 @@ class SleepRecordsAdapter(
             parent,
             false
         )
-        return ViewHolder(binding, onItemClick, onItemLongClick)
+        return ViewHolder(binding, onItemClick, onItemLongClick, dateFormatter)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        holder.bind(records[position])
+        val record = records[position]
+        val sleepDuration = calculateSleepDuration(record)
+        holder.bind(record, sleepDuration)
     }
 
     override fun getItemCount(): Int = records.size
@@ -37,20 +81,35 @@ class SleepRecordsAdapter(
     class ViewHolder(
         private val binding: ItemSleepRecordBinding,
         private val onItemClick: (SleepRecord) -> Unit,
-        private val onItemLongClick: (SleepRecord) -> Unit
+        private val onItemLongClick: (SleepRecord) -> Unit,
+        private val dateFormatter: DateTimeFormatter
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        private val dateFormatter = DateTimeFormatter.ofPattern("dd MMMM yyyy", java.util.Locale("ru"))
-        private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-        fun bind(record: SleepRecord) {
+        fun bind(record: SleepRecord, sleepDuration: String) {
             binding.recordDate.text = record.date.format(dateFormatter)
 
-            binding.wakeTimeText.text = record.wakeTime?.format(timeFormatter) ?: "--:--"
-            binding.bedTimeText.text = record.bedTime?.format(timeFormatter) ?: "--:--"
+            val wakeTimeStr = record.wakeTime?.let {
+                String.format("%02d:%02d", it.hour, it.minute)
+            } ?: "--:--"
 
-            val duration = calculateDuration(record)
-            binding.durationText.text = duration
+            val bedTimeStr = record.bedTime?.let {
+                String.format("%02d:%02d", it.hour, it.minute)
+            } ?: "--:--"
+
+            binding.wakeTimeText.text = wakeTimeStr
+            binding.bedTimeText.text = bedTimeStr
+
+            if (record.bedTime != null) {
+                binding.durationText.text = sleepDuration
+                if (sleepDuration != "--:--") {
+                    binding.durationText.setTextColor(android.graphics.Color.parseColor("#4CAF50"))
+                } else {
+                    binding.durationText.setTextColor(android.graphics.Color.parseColor("#999999"))
+                }
+            } else {
+                binding.durationText.text = "--:--"
+                binding.durationText.setTextColor(android.graphics.Color.parseColor("#999999"))
+            }
 
             binding.manualBadge.visibility = if (record.isManual) android.view.View.VISIBLE else android.view.View.GONE
 
@@ -62,25 +121,6 @@ class SleepRecordsAdapter(
                 onItemLongClick(record)
                 true
             }
-        }
-
-        private fun calculateDuration(record: SleepRecord): String {
-            val bedTime = record.bedTime ?: return "-- ч -- мин"
-            val wakeTime = record.wakeTime ?: return "-- ч -- мин"
-
-            val bedMinutes = bedTime.hour * 60 + bedTime.minute
-            val wakeMinutes = wakeTime.hour * 60 + wakeTime.minute
-
-            val durationMinutes = if (wakeMinutes >= bedMinutes) {
-                wakeMinutes - bedMinutes
-            } else {
-                (24 * 60 - bedMinutes) + wakeMinutes
-            }
-
-            val hours = durationMinutes / 60
-            val minutes = durationMinutes % 60
-
-            return "${hours}ч ${minutes}мин"
         }
     }
 }

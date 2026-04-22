@@ -82,9 +82,6 @@ class AlarmFragment : Fragment() {
             navigateToHistory()
         }
 
-        binding.manualEntryButton.setOnClickListener {
-            showManualEntryDialog()
-        }
 
         binding.fixPermissionButton.setOnClickListener {
             openAlarmSettings()
