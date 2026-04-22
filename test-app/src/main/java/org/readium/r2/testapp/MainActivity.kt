@@ -9,16 +9,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
+import androidx.navigation.findNavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.navigateUp
-import org.readium.r2.testapp.databinding.ActivityMainBinding
-import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
-import org.readium.r2.testapp.Application
+import org.readium.r2.testapp.bookshelf.BookshelfFragment
+import org.readium.r2.testapp.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
@@ -43,95 +44,55 @@ class MainActivity : AppCompatActivity() {
         val navHostFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         navController = navHostFragment.navController
 
-        // Настройка ActionBar - только главное меню является верхним уровнем
+        // Настройка ActionBar
         appBarConfiguration = AppBarConfiguration(
             setOf(
-                R.id.menu_fragment
+                R.id.menu_fragment,
+                R.id.bookshelf_fragment,
+                // R.id.historyFragment удалён отсюда, чтобы появилась стрелка "Назад"
+                R.id.alarm_fragment,
+                R.id.sleepStatsFragment
             )
         )
-
         setupActionBarWithNavController(navController, appBarConfiguration)
-
-        // Обновляем меню при смене destination
-        navController.addOnDestinationChangedListener { _, _, _ ->
-            supportInvalidateOptionsMenu()
-        }
 
         // Блокировка экрана
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        // Определяем текущий фрагмент
+        // Проверяем текущий фрагмент
         val navHostFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment) as? NavHostFragment
         val currentFragment = navHostFragment?.childFragmentManager?.fragments?.firstOrNull()
 
-        // Если текущий фрагмент - BookshelfFragment, показываем меню синхронизации
-        return when (currentFragment) {
-            is org.readium.r2.testapp.bookshelf.BookshelfFragment -> {
-                menuInflater.inflate(R.menu.menu_main, menu)
-                true
-            }
-            else -> {
-                // Для остальных фрагментов показываем пустое меню
-                false
-            }
+        // Показываем меню только для BookshelfFragment
+        if (currentFragment is BookshelfFragment) {
+            menuInflater.inflate(R.menu.menu_main, menu)
+            return true
         }
+
+        return false
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_sync -> {
-                performSync()
+                // Находим BookshelfFragment и вызываем синхронизацию
+                val bookshelfFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment)
+                    ?.childFragmentManager?.fragments?.firstOrNull { it is BookshelfFragment }
+                (bookshelfFragment as? BookshelfFragment)?.performSync()
+                true
+            }
+            R.id.action_history -> {
+                navigateToHistory()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
-    private fun performSync() {
-        lifecycleScope.launch {
-            val snackbar = Snackbar.make(
-                binding.root,
-                "Синхронизация...",
-                Snackbar.LENGTH_INDEFINITE
-            )
-            snackbar.show()
-
-            try {
-                val app = application as Application
-                val result = app.syncManager.syncAllBooks()
-
-                snackbar.dismiss()
-
-                result.onSuccess { response ->
-                    val message = "Синхронизация завершена:\n" +
-                        "📚 Создано книг: ${response.booksCreated}\n" +
-                        "🔄 Обновлено книг: ${response.booksUpdated}\n" +
-                        "📊 Создано записей: ${response.statsCreated}\n" +
-                        "🔄 Обновлено записей: ${response.statsUpdated}"
-
-                    Snackbar.make(
-                        binding.root,
-                        message,
-                        Snackbar.LENGTH_LONG
-                    ).show()
-                }.onFailure { error ->
-                    Snackbar.make(
-                        binding.root,
-                        "Ошибка: ${error.message}",
-                        Snackbar.LENGTH_LONG
-                    ).show()
-                }
-            } catch (e: Exception) {
-                snackbar.dismiss()
-                Snackbar.make(
-                    binding.root,
-                    "Ошибка: ${e.message}",
-                    Snackbar.LENGTH_LONG
-                ).show()
-            }
-        }
+    private fun navigateToHistory() {
+        navController.navigate(R.id.action_bookshelf_to_history)
     }
 
     override fun onSupportNavigateUp(): Boolean {

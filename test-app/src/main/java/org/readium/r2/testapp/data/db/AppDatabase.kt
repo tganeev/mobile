@@ -80,7 +80,6 @@ abstract class AppDatabase : RoomDatabase() {
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE sleep_records RENAME TO sleep_records_old")
-
                 database.execSQL("""
                     CREATE TABLE sleep_records (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -93,7 +92,6 @@ abstract class AppDatabase : RoomDatabase() {
                         updated_at INTEGER NOT NULL
                     )
                 """)
-
                 database.execSQL("""
                     INSERT INTO sleep_records (id, date, wake_time, bed_time, is_manual, synced, created_at, updated_at)
                     SELECT id, date, wake_time, bed_time, 
@@ -102,7 +100,6 @@ abstract class AppDatabase : RoomDatabase() {
                            created_at, updated_at
                     FROM sleep_records_old
                 """)
-
                 database.execSQL("DROP TABLE sleep_records_old")
                 database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_date ON sleep_records(date)")
                 database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_synced ON sleep_records(synced)")
@@ -111,12 +108,9 @@ abstract class AppDatabase : RoomDatabase() {
 
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // Удаляем старую таблицу и индексы
                 database.execSQL("DROP INDEX IF EXISTS idx_sleep_records_date")
                 database.execSQL("DROP INDEX IF EXISTS idx_sleep_records_synced")
                 database.execSQL("DROP TABLE IF EXISTS sleep_records")
-
-                // Создаём таблицу заново (без DEFAULT)
                 database.execSQL("""
                     CREATE TABLE sleep_records (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -129,7 +123,6 @@ abstract class AppDatabase : RoomDatabase() {
                         updated_at INTEGER NOT NULL
                     )
                 """)
-
                 database.execSQL("CREATE INDEX idx_sleep_records_date ON sleep_records(date)")
                 database.execSQL("CREATE INDEX idx_sleep_records_synced ON sleep_records(synced)")
             }

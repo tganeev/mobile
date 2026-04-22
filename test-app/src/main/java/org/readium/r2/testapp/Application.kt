@@ -28,6 +28,7 @@ import java.io.File
 import java.util.Properties
 import java.util.concurrent.Executors
 import org.readium.r2.testapp.alarm.AlarmForegroundService
+import org.readium.r2.testapp.sync.HistorySyncManager
 
 class Application : android.app.Application() {
 
@@ -59,6 +60,11 @@ class Application : android.app.Application() {
     private val Context.navigatorPreferences: DataStore<Preferences>
         by preferencesDataStore(name = "navigator-preferences")
 
+    lateinit var historySyncManager: HistorySyncManager
+        private set
+
+
+
     override fun onCreate() {
         if (DEBUG) {
             enableStrictMode()
@@ -67,6 +73,9 @@ class Application : android.app.Application() {
 
         super.onCreate()
 
+        historySyncManager = HistorySyncManager(this, this)
+
+
         DynamicColors.applyToActivitiesIfAvailable(this)
 
         readium = Readium(this)
@@ -74,6 +83,7 @@ class Application : android.app.Application() {
         storageDir = computeStorageDir()
 
         val database = AppDatabase.getDatabase(this)
+
 
         bookRepository = BookRepository(database.booksDao())
         sleepRepository = SleepRepository(database.sleepDao())

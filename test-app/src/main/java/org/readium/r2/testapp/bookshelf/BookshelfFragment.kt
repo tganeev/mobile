@@ -35,6 +35,13 @@ import org.readium.r2.testapp.databinding.FragmentBookshelfBinding
 import org.readium.r2.testapp.opds.GridAutoFitLayoutManager
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.viewLifecycle
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
+import androidx.navigation.findNavController
+import com.google.android.material.snackbar.Snackbar
+
+
 
 class BookshelfFragment : Fragment() {
 
@@ -65,8 +72,49 @@ class BookshelfFragment : Fragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setHasOptionsMenu(true)  // <-- эта строка должна быть
+        setHasOptionsMenu(true)
     }
+
+
+
+
+    fun performSync() {
+        lifecycleScope.launch {
+            val snackbar = Snackbar.make(
+                requireView(),
+                "Синхронизация...",
+                Snackbar.LENGTH_INDEFINITE
+            )
+            snackbar.show()
+
+            try {
+                val app = requireContext().applicationContext as Application
+                val result = app.syncManager.syncAllBooks()
+
+                snackbar.dismiss()
+
+                result.onSuccess { response ->
+                    val message = "Синхронизация завершена:\n" +
+                        "📚 Создано книг: ${response.booksCreated}\n" +
+                        "🔄 Обновлено книг: ${response.booksUpdated}\n" +
+                        "📊 Создано записей: ${response.statsCreated}\n" +
+                        "🔄 Обновлено записей: ${response.statsUpdated}"
+
+                    Snackbar.make(requireView(), message, Snackbar.LENGTH_LONG).show()
+                }.onFailure { error ->
+                    Snackbar.make(requireView(), "Ошибка: ${error.message}", Snackbar.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                snackbar.dismiss()
+                Snackbar.make(requireView(), "Ошибка: ${e.message}", Snackbar.LENGTH_LONG).show()
+            }
+        }
+    }
+    private fun navigateToHistory() {
+        val navController = requireView().findNavController()
+        navController.navigate(R.id.action_bookshelf_to_history)
+    }
+
 
     override fun onCreateView(
         inflater: LayoutInflater,

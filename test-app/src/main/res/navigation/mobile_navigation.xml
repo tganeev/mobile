@@ -12,12 +12,19 @@
         android:label="PKMS"
         tools:layout="@layout/fragment_menu" />
 
-    <!-- Читалка (Bookshelf) -->
+    <!-- Библиотека (ранее Читалка) -->
     <fragment
         android:id="@+id/bookshelf_fragment"
         android:name="org.readium.r2.testapp.bookshelf.BookshelfFragment"
-        android:label="Читалка"
+        android:label="Библиотека"
         tools:layout="@layout/fragment_bookshelf" />
+
+    <!-- История чтения -->
+    <fragment
+        android:id="@+id/historyFragment"
+        android:name="org.readium.r2.testapp.history.HistoryFragment"
+        android:label="История чтения"
+        tools:layout="@layout/fragment_history" />
 
     <!-- Будильник - настройки -->
     <fragment
@@ -45,5 +52,9 @@
     <action
         android:id="@+id/action_alarm_to_stats"
         app:destination="@id/sleepStatsFragment" />
+
+    <action
+        android:id="@+id/action_bookshelf_to_history"
+        app:destination="@id/historyFragment" />
 
 </navigation>

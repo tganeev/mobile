@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:background="?attr/selectableItemBackground">
+
+    <TextView
+        android:id="@+id/historyDate"
+        android:layout_width="100dp"
+        android:layout_height="wrap_content"
+        android:text="22.04.2026"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/historyBook"
+        android:layout_width="200dp"
+        android:layout_height="wrap_content"
+        android:text="Мастер и Маргарита"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/historyEvent"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:text="Прогресс"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/historyDetails"
+        android:layout_width="150dp"
+        android:layout_height="wrap_content"
+        android:text="50 страниц"
+        android:textSize="14sp"
+        android:textColor="?android:attr/textColorSecondary" />
+
+</LinearLayout>
