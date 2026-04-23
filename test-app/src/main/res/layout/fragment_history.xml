@@ -6,78 +6,108 @@
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-    <!-- Контент -->
+
+    <!-- Панель управления периодом -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:background="?attr/colorSurface">
 
-        <!-- Индикатор загрузки -->
-        <ProgressBar
-            android:id="@+id/progressBar"
+        <Button
+            android:id="@+id/prevMonthButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="◀"
+            android:background="@android:color/transparent"
+            android:textSize="24sp" />
+
+        <TextView
+            android:id="@+id/periodTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Апрель 2026"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <Button
+            android:id="@+id/nextMonthButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="▶"
+            android:background="@android:color/transparent"
+            android:textSize="24sp" />
+
+
+        <ImageButton
+            android:id="@+id/calendarButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_baseline_calendar_24"
+            android:background="@android:color/transparent"
+            android:contentDescription="Выбрать период" />
+
+    </LinearLayout>
+
+    <!-- Таблица -->
+    <HorizontalScrollView
+        android:id="@+id/tableScrollView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:id="@+id/tableContainer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginTop="32dp"
-            android:visibility="gone" />
+            android:orientation="horizontal">
 
-        <!-- Таблица -->
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            <!-- Фиксированные колонки -->
             <LinearLayout
+                android:id="@+id/fixedColumnsContainer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <!-- Заголовки таблицы -->
+                android:orientation="vertical" />
+
+            <!-- Динамические колонки -->
+            <HorizontalScrollView
+                android:id="@+id/dynamicColumnsScroll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content">
+
                 <LinearLayout
-                    android:layout_width="match_parent"
+                    android:id="@+id/dynamicColumnsContainer"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:background="?attr/colorPrimary"
-                    android:padding="12dp">
-                    <TextView
-                        android:layout_width="100dp"
-                        android:layout_height="wrap_content"
-                        android:text="Дата"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="200dp"
-                        android:layout_height="wrap_content"
-                        android:text="Книга"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="120dp"
-                        android:layout_height="wrap_content"
-                        android:text="Событие"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="150dp"
-                        android:layout_height="wrap_content"
-                        android:text="Детали"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                </LinearLayout>
-                <!-- Список записей -->
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/historyRecycler"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
-            </LinearLayout>
-        </HorizontalScrollView>
-        <!-- Сообщение при отсутствии данных -->
-        <TextView
-            android:id="@+id/emptyText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginTop="32dp"
-            android:text="Нет данных. Нажмите иконку синхронизации в верхнем меню"
-            android:textSize="16sp"
-            android:visibility="gone" />
-    </LinearLayout>
+                    android:orientation="vertical" />
+
+            </HorizontalScrollView>
+
+        </LinearLayout>
+
+    </HorizontalScrollView>
+
+    <!-- Прогресс загрузки -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="32dp"
+        android:visibility="gone" />
+
+    <!-- Сообщение при отсутствии данных -->
+    <TextView
+        android:id="@+id/emptyText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="32dp"
+        android:text="Нет данных за выбранный период"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
 </LinearLayout>

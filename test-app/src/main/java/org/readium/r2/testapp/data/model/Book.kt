@@ -30,9 +30,12 @@ data class Book(
     val cover: String,
     @ColumnInfo(name = READING_TIME, defaultValue = "0")
     var readingTime: Long = 0,
+    @ColumnInfo(name = "total_pages", defaultValue = "0")
+    var totalPages: Int = 0,
     @ColumnInfo(name = PAGES_READ, defaultValue = "0")
     var pagesRead: Int = 0,
     @ColumnInfo(name = LAST_READ_DATE)
+
     var lastReadDate: Long? = null,
 ) : Serializable {
     constructor(

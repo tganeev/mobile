@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.testapp.data.model.*
+import org.readium.r2.testapp.data.model.ReadingStat
 
 @Dao
 interface BooksDao {
@@ -115,6 +116,9 @@ interface BooksDao {
 
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId AND date = :date")
     suspend fun getReadingStatByDate(bookId: Long, date: String): ReadingStat?
+
+    @Query("SELECT * FROM reading_stats ORDER BY date ASC")
+    fun getAllReadingStats(): Flow<List<ReadingStat>>
 
     @Query(
         """

@@ -47,6 +47,8 @@ class BookRepository(
 
     suspend fun updateBook(book: Book) = booksDao.updateBook(book)
 
+    fun getAllReadingStats(): Flow<List<ReadingStat>> = booksDao.getAllReadingStats()
+
     suspend fun updateBookPages(bookId: Long, pages: Int) {
         Timber.d("updateBookPages: bookId=$bookId, pages=$pages")
         booksDao.updateBookPages(bookId, pages)

@@ -48,10 +48,10 @@ class MainActivity : AppCompatActivity() {
         appBarConfiguration = AppBarConfiguration(
             setOf(
                 R.id.menu_fragment,
-                R.id.bookshelf_fragment,
-                // R.id.historyFragment удалён отсюда, чтобы появилась стрелка "Назад"
-                R.id.alarm_fragment,
-                R.id.sleepStatsFragment
+                //R.id.bookshelf_fragment,
+                //R.id.historyFragment,
+               // R.id.alarm_fragment,
+                //R.id.sleepStatsFragment
             )
         )
         setupActionBarWithNavController(navController, appBarConfiguration)

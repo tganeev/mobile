@@ -2,30 +2,23 @@ package org.readium.r2.testapp.history
 
 import android.os.Bundle
 import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentHistoryBinding
-import org.readium.r2.testapp.ui.MenuVisibilityViewModel
 
 class HistoryFragment : Fragment() {
+
     private var _binding: FragmentHistoryBinding? = null
     private val binding get() = _binding!!
+
     private val viewModel: HistoryViewModel by viewModels()
-    private lateinit var adapter: HistoryAdapter
-    private val menuViewModel: MenuVisibilityViewModel by activityViewModels()
+    private lateinit var tableAdapter: HistoryTableAdapter
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -39,60 +32,58 @@ class HistoryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Подключаем верхнее меню через MenuProvider
-        requireActivity().addMenuProvider(object : MenuProvider {
-            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-                menuInflater.inflate(R.menu.menu_history, menu)
-                // Блокируем кнопку, если уже идёт загрузка
-                menu.findItem(R.id.action_restore_history)?.isEnabled = !viewModel.isLoading.value
-            }
-
-            override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-                return when (menuItem.itemId) {
-                    R.id.action_restore_history -> {
-                        // ✅ Запускаем suspend-функцию внутри корутины
-                        lifecycleScope.launch {
-                            viewModel.restoreFromServer()
-                        }
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
-
-        setupRecyclerView()
+        setupPeriodControls()
         setupObservers()
+
+        viewModel.loadData()
     }
 
-    private fun setupRecyclerView() {
-        adapter = HistoryAdapter { record ->
-            Snackbar.make(binding.root, "Книга: ${record.bookTitle}", Snackbar.LENGTH_SHORT).show()
+
+
+    private fun setupPeriodControls() {
+        binding.prevMonthButton.setOnClickListener {
+            viewModel.previousMonth()
         }
-        binding.historyRecycler.layoutManager = LinearLayoutManager(requireContext())
-        binding.historyRecycler.adapter = adapter
+
+        binding.nextMonthButton.setOnClickListener {
+            viewModel.nextMonth()
+        }
+
+        binding.calendarButton.setOnClickListener {
+            // TODO: Добавить выбор произвольного периода
+            Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_SHORT).show()
+        }
     }
 
     private fun setupObservers() {
         lifecycleScope.launch {
-            viewModel.historyRecords.collect { records ->
-                adapter.submitList(records)
-                if (records.isEmpty()) {
-                    binding.emptyText.visibility = View.VISIBLE
-                    binding.historyRecycler.visibility = View.GONE
-                } else {
-                    binding.emptyText.visibility = View.GONE
-                    binding.historyRecycler.visibility = View.VISIBLE
-                }
+            viewModel.currentMonth.collect { month ->
+                binding.periodTitle.text = viewModel.getFormattedMonth()
             }
         }
+
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
                 binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-                // Обновляем состояние кнопки в меню
-                requireActivity().invalidateOptionsMenu()
+                binding.tableScrollView.visibility = if (isLoading) View.GONE else View.VISIBLE
             }
         }
+
+        lifecycleScope.launch {
+            viewModel.tableData.collect { data ->
+                if (data != null) {
+                    if (data.books.isEmpty()) {
+                        binding.emptyText.visibility = View.VISIBLE
+                        binding.tableScrollView.visibility = View.GONE
+                    } else {
+                        binding.emptyText.visibility = View.GONE
+                        binding.tableScrollView.visibility = View.VISIBLE
+                        renderTable(data)
+                    }
+                }
+            }
+        }
+
         lifecycleScope.launch {
             viewModel.errorMessage.collect { error ->
                 if (error != null) {
@@ -103,14 +94,19 @@ class HistoryFragment : Fragment() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        menuViewModel.setMenuVisible(false)
-    }
+    private fun renderTable(data: HistoryTableData) {
+        if (!::tableAdapter.isInitialized) {
+            tableAdapter = HistoryTableAdapter { bookId ->
+                // TODO: Открыть книгу
+                Snackbar.make(binding.root, "Книга ID: $bookId", Snackbar.LENGTH_SHORT).show()
+            }
+        }
 
-    override fun onPause() {
-        super.onPause()
-        menuViewModel.setMenuVisible(true)
+        tableAdapter.setData(
+            data = data,
+            fixedContainer = binding.fixedColumnsContainer,
+            dynamicContainer = binding.dynamicColumnsContainer
+        )
     }
 
     override fun onDestroyView() {
