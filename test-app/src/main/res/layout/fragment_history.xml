@@ -6,16 +6,7 @@
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-    <!-- Toolbar -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-        app:navigationIcon="?attr/homeAsUpIndicator"
-        app:title="История"
-        app:titleTextColor="@android:color/white" />
+
 
     <!-- Панель управления периодом -->
     <LinearLayout
@@ -62,6 +53,25 @@
 
     </LinearLayout>
 
+    <!-- ПОЛЕ ПОИСКА (новое) -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/searchLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="12dp"
+        android:hint="Поиск по названию книги"
+        app:endIconMode="clear_text"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/searchInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
     <!-- Вертикальный скролл для таблицы -->
     <ScrollView
         android:layout_width="match_parent"
@@ -73,7 +83,7 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
-            <!-- ФИКСИРОВАННАЯ колонка (НЕ участвует в горизонтальном скролле) -->
+            <!-- Фиксированная колонка -->
             <LinearLayout
                 android:id="@+id/fixedColumnContainer"
                 android:layout_width="wrap_content"
@@ -84,6 +94,7 @@
 
             <!-- Горизонтальный скролл для остальных колонок -->
             <HorizontalScrollView
+                android:id="@+id/tableScrollView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"

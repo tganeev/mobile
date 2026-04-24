@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.Application as App
@@ -27,21 +30,77 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    private val _currentMonth = MutableStateFlow(YearMonth.now())
-    val currentMonth: StateFlow<YearMonth> = _currentMonth.asStateFlow()
+    private val _periodRange = MutableStateFlow<Pair<LocalDate, LocalDate>>(
+        YearMonth.now().atDay(1) to YearMonth.now().atEndOfMonth()
+    )
+    val periodRange: StateFlow<Pair<LocalDate, LocalDate>> = _periodRange.asStateFlow()
 
-    private val monthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", Locale.forLanguageTag("ru"))
+    // ПОИСК
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _filteredTableData = MutableStateFlow<HistoryTableData?>(null)
+    val filteredTableData: StateFlow<HistoryTableData?> = _filteredTableData.asStateFlow()
+
+    val currentStartDate: LocalDate get() = _periodRange.value.first
+    val currentEndDate: LocalDate get() = _periodRange.value.second
+
+    init {
+        // Наблюдаем за изменениями поиска и данных
+        viewModelScope.launch {
+            combine(
+                _tableData,
+                _searchQuery.debounce(300).distinctUntilChanged()
+            ) { data, query ->
+                if (data == null) return@combine null
+                if (query.isBlank()) return@combine data
+
+                // Фильтруем книги по названию
+                val filteredBooks = data.books.filter { book ->
+                    book.title.contains(query, ignoreCase = true)
+                }
+
+                // Пересчитываем итоги для отфильтрованных книг
+                val totalsByDate = data.dates.associateWith { date ->
+                    filteredBooks.sumOf { it.dailyProgress[date] ?: 0 }.toDouble()
+                }
+
+                val totalTimeByDate = data.dates.associateWith { date ->
+                    filteredBooks.sumOf { it.dailyTime[date] ?: 0.0 }
+                }
+
+                val totalPagesSum = totalsByDate.values.sum()
+                val totalHoursSum = totalTimeByDate.values.sum()
+
+                data.copy(
+                    books = filteredBooks,
+                    totalsByDate = totalsByDate,
+                    totalTimeByDate = totalTimeByDate,
+                    totalPagesSum = totalPagesSum,
+                    totalHoursSum = totalHoursSum
+                )
+            }.collect { filteredData ->
+                _filteredTableData.value = filteredData
+            }
+        }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
 
     fun loadData() {
+        val (startDate, endDate) = _periodRange.value
+        loadDataForRange(startDate, endDate)
+    }
+
+    fun loadDataForRange(startDate: LocalDate, endDate: LocalDate) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
 
             try {
-                val yearMonth = _currentMonth.value
-                val startDate = yearMonth.atDay(1)
-                val endDate = yearMonth.atEndOfMonth()
-
+                _periodRange.value = startDate to endDate
                 val data = loadHistoryData(startDate, endDate)
                 _tableData.value = data
             } catch (e: Exception) {
@@ -50,6 +109,24 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 _isLoading.value = false
             }
         }
+    }
+
+    fun previousMonth() {
+        val (startDate, endDate) = _periodRange.value
+        val month = YearMonth.from(startDate)
+        val previousMonth = month.minusMonths(1)
+        val newStart = previousMonth.atDay(1)
+        val newEnd = previousMonth.atEndOfMonth()
+        loadDataForRange(newStart, newEnd)
+    }
+
+    fun nextMonth() {
+        val (startDate, endDate) = _periodRange.value
+        val month = YearMonth.from(startDate)
+        val nextMonth = month.plusMonths(1)
+        val newStart = nextMonth.atDay(1)
+        val newEnd = nextMonth.atEndOfMonth()
+        loadDataForRange(newStart, newEnd)
     }
 
     private suspend fun loadHistoryData(startDate: LocalDate, endDate: LocalDate): HistoryTableData {
@@ -72,9 +149,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         val bookProgressList = books.mapNotNull { book ->
             val bookId = book.id ?: return@mapNotNull null
 
-            // Исправлено: вычисляем статус на основе pagesRead
             val statusText = when {
-                book.pagesRead > 0 && book.totalPages != null && book.pagesRead >= book.totalPages -> "Завершено"
                 book.pagesRead > 0 -> "В процессе"
                 else -> "В плане"
             }
@@ -100,7 +175,6 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             )
         }.sortedBy { it.title }
 
-        // Рассчитываем итоги по датам
         val totalsByDate = dates.associateWith { date ->
             bookProgressList.sumOf { it.dailyProgress[date] ?: 0 }.toDouble()
         }
@@ -109,7 +183,6 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             bookProgressList.sumOf { it.dailyTime[date] ?: 0.0 }
         }
 
-        // Общие суммы за период
         val totalPagesSum = totalsByDate.values.sum()
         val totalHoursSum = totalTimeByDate.values.sum()
 
@@ -123,21 +196,6 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             totalPagesSum = totalPagesSum,
             totalHoursSum = totalHoursSum
         )
-    }
-
-    fun previousMonth() {
-        _currentMonth.value = _currentMonth.value.minusMonths(1)
-        loadData()
-    }
-
-    fun nextMonth() {
-        _currentMonth.value = _currentMonth.value.plusMonths(1)
-        loadData()
-    }
-
-    fun getFormattedMonth(): String {
-        val formatted = _currentMonth.value.format(monthFormatter)
-        return formatted.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
     }
 
     fun clearError() {
