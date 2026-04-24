@@ -7,7 +7,8 @@ data class HistoryTableData(
     val periodEnd: LocalDate,
     val dates: List<LocalDate>,
     val books: List<BookProgress>,
-    val totals: Map<LocalDate, Int>
+    val totals: Map<LocalDate, Int>,
+    val totalTime: Map<LocalDate, Double>
 )
 
 data class BookProgress(
@@ -16,5 +17,6 @@ data class BookProgress(
     val author: String,
     val status: String,
     val category: String,
-    val dailyProgress: Map<LocalDate, Int>
+    val dailyProgress: Map<LocalDate, Int>,
+    val dailyTime: Map<LocalDate, Double>
 )

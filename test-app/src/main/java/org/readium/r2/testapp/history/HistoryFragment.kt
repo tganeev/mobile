@@ -97,15 +97,14 @@ class HistoryFragment : Fragment() {
     private fun renderTable(data: HistoryTableData) {
         if (!::tableAdapter.isInitialized) {
             tableAdapter = HistoryTableAdapter { bookId ->
-                // TODO: Открыть книгу
                 Snackbar.make(binding.root, "Книга ID: $bookId", Snackbar.LENGTH_SHORT).show()
             }
         }
 
         tableAdapter.setData(
             data = data,
-            fixedContainer = binding.fixedColumnsContainer,
-            dynamicContainer = binding.dynamicColumnsContainer
+            fixedContainer = binding.fixedColumnContainer,      // только для Названия
+            dynamicContainer = binding.dynamicColumnsContainer  // для всего остального
         )
     }
 

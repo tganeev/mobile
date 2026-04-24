@@ -56,21 +56,16 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun loadHistoryData(startDate: LocalDate, endDate: LocalDate): HistoryTableData {
-        // Получаем все книги
         val books = app.bookRepository.books().first()
-
-        // Получаем всю статистику
         val allStats = app.bookRepository.getAllReadingStats().first()
 
-        // Фильтруем статистику за период
         val statsInRange = allStats.filter { stat ->
             stat.date in startDate..endDate
         }
 
-        // Группируем статистику по книгам и датам
+        // Группируем статистику по книгам
         val statsByBook = statsInRange.groupBy { it.bookId }
 
-        // Формируем список дат периода
         val dates = mutableListOf<LocalDate>()
         var currentDate = startDate
         while (currentDate <= endDate) {
@@ -78,11 +73,9 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             currentDate = currentDate.plusDays(1)
         }
 
-        // Формируем данные по каждой книге
         val bookProgressList = books.mapNotNull { book ->
             val bookId = book.id ?: return@mapNotNull null
 
-            // Определяем статус книги
             val statusText = when {
                 book.pagesRead > 0 && book.pagesRead >= (book.totalPages ?: Int.MAX_VALUE) -> "Завершено"
                 book.pagesRead > 0 -> "В процессе"
@@ -95,19 +88,28 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 bookStats.find { it.date == date }?.pagesRead ?: 0
             }
 
+            val dailyTime = dates.associateWith { date ->
+                bookStats.find { it.date == date }?.hoursRead ?: 0.0
+            }
+
             BookProgress(
                 bookId = bookId,
                 title = book.title ?: "Без названия",
                 author = book.author ?: "",
                 status = statusText,
                 category = "0.0",
-                dailyProgress = dailyProgress
+                dailyProgress = dailyProgress,
+                dailyTime = dailyTime
             )
         }.sortedBy { it.title }
 
-        // Рассчитываем итоги по дням
+        // Итоги по дням
         val totals = dates.associateWith { date ->
             bookProgressList.sumOf { it.dailyProgress[date] ?: 0 }
+        }
+
+        val totalTime = dates.associateWith { date ->
+            bookProgressList.sumOf { it.dailyTime[date] ?: 0.0 }
         }
 
         return HistoryTableData(
@@ -115,7 +117,8 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             periodEnd = endDate,
             dates = dates,
             books = bookProgressList,
-            totals = totals
+            totals = totals,
+            totalTime = totalTime
         )
     }
 
