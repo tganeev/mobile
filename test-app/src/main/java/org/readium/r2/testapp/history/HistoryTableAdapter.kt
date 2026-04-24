@@ -42,12 +42,12 @@ class HistoryTableAdapter(
         dynamicContainer.removeAllViews()
 
         // ===== 1. ИТОГО (над заголовками) =====
-        fixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
+        fixedContainer.addView(createTotalFixedRow("ИТОГО (стр)"))
         dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { value ->
-            value.toString()
+            formatTotalPages(value)
         })
 
-        fixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
+        fixedContainer.addView(createTotalFixedRow("ИТОГО (время)"))
         dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { value ->
             formatHoursShort(value)
         })
@@ -194,7 +194,7 @@ class HistoryTableAdapter(
                 val pages = book.dailyProgress[date] ?: 0
                 val hours = book.dailyTime[date] ?: 0.0
                 val displayText = if (pages > 0) {
-                    "${pages} стр.\n${formatHoursShort(hours)}"
+                    "${pages} стр\n${formatHoursShort(hours)}"
                 } else {
                     "—"
                 }
@@ -300,6 +300,11 @@ class HistoryTableAdapter(
 
             layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
         }
+    }
+
+    private fun formatTotalPages(value: Double): String {
+        val intValue = value.toInt()
+        return "${intValue} стр"
     }
 
     private fun formatHoursShort(hours: Double): String {
