@@ -11,6 +11,7 @@ import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentHistoryBinding
+import org.readium.r2.testapp.reader.ReaderActivityContract
 
 class HistoryFragment : Fragment() {
 
@@ -32,13 +33,18 @@ class HistoryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        setupToolbar()
         setupPeriodControls()
         setupObservers()
 
         viewModel.loadData()
     }
 
-
+    private fun setupToolbar() {
+        binding.toolbar.setNavigationOnClickListener {
+            requireActivity().onBackPressedDispatcher.onBackPressed()
+        }
+    }
 
     private fun setupPeriodControls() {
         binding.prevMonthButton.setOnClickListener {
@@ -50,8 +56,7 @@ class HistoryFragment : Fragment() {
         }
 
         binding.calendarButton.setOnClickListener {
-            // TODO: Добавить выбор произвольного периода
-            Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_SHORT).show()
+            Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_LONG).show()
         }
     }
 
@@ -65,7 +70,10 @@ class HistoryFragment : Fragment() {
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
                 binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-                binding.tableScrollView.visibility = if (isLoading) View.GONE else View.VISIBLE
+                if (!isLoading) {
+                    // Убираем старые ссылки, которые могли вызвать ошибку
+                    // tableScrollView больше не существует
+                }
             }
         }
 
@@ -74,10 +82,8 @@ class HistoryFragment : Fragment() {
                 if (data != null) {
                     if (data.books.isEmpty()) {
                         binding.emptyText.visibility = View.VISIBLE
-                        binding.tableScrollView.visibility = View.GONE
                     } else {
                         binding.emptyText.visibility = View.GONE
-                        binding.tableScrollView.visibility = View.VISIBLE
                         renderTable(data)
                     }
                 }
@@ -97,14 +103,19 @@ class HistoryFragment : Fragment() {
     private fun renderTable(data: HistoryTableData) {
         if (!::tableAdapter.isInitialized) {
             tableAdapter = HistoryTableAdapter { bookId ->
-                Snackbar.make(binding.root, "Книга ID: $bookId", Snackbar.LENGTH_SHORT).show()
+                // Открываем книгу по клику на название
+                val intent = ReaderActivityContract().createIntent(
+                    requireContext(),
+                    ReaderActivityContract.Arguments(bookId)
+                )
+                startActivity(intent)
             }
         }
 
         tableAdapter.setData(
             data = data,
-            fixedContainer = binding.fixedColumnContainer,      // только для Названия
-            dynamicContainer = binding.dynamicColumnsContainer  // для всего остального
+            fixedContainer = binding.fixedColumnContainer,
+            dynamicContainer = binding.dynamicColumnsContainer
         )
     }
 

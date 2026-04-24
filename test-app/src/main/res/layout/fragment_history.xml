@@ -62,38 +62,45 @@
 
     </LinearLayout>
 
-    <!-- Таблица: фиксированная колонка (Название) + скроллируемые остальные -->
-    <LinearLayout
+    <!-- Вертикальный скролл для всей таблицы -->
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="horizontal">
+        android:scrollbars="vertical">
 
-        <!-- ФИКСИРОВАННАЯ колонка: только Название -->
         <LinearLayout
-            android:id="@+id/fixedColumnContainer"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:elevation="4dp"
-            android:background="?attr/colorSurface" />
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
 
-        <!-- СКРОЛЛИРУЕМЫЕ колонки: Автор, Статус, Категория, Даты -->
-        <HorizontalScrollView
-            android:id="@+id/tableScrollView"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:scrollbars="horizontal">
-
+            <!-- ФИКСИРОВАННАЯ колонка (НЕ участвует в горизонтальном скролле) -->
             <LinearLayout
-                android:id="@+id/dynamicColumnsContainer"
+                android:id="@+id/fixedColumnContainer"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:orientation="vertical" />
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:elevation="4dp"
+                android:background="?attr/colorSurface" />
 
-        </HorizontalScrollView>
+            <!-- Горизонтальный скролл для остальных колонок -->
+            <HorizontalScrollView
+                android:id="@+id/horizontalScrollView"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:scrollbars="horizontal">
 
-    </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/dynamicColumnsContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </HorizontalScrollView>
+
+        </LinearLayout>
+
+    </ScrollView>
 
     <!-- Прогресс загрузки -->
     <ProgressBar

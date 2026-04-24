@@ -1,5 +1,6 @@
 package org.readium.r2.testapp.history
 
+import android.graphics.Color
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -40,33 +41,29 @@ class HistoryTableAdapter(
         fixedContainer.removeAllViews()
         dynamicContainer.removeAllViews()
 
-        val fixedHeader = createFixedHeaderRow()
-        val dynamicHeader = createDynamicHeaderRow(data.dates)
-        fixedContainer.addView(fixedHeader)
-        dynamicContainer.addView(dynamicHeader)
-
-        data.books.forEach { book ->
-            val fixedRow = createFixedRow(book)
-            val dynamicRow = createDynamicRow(book, data.dates)
-            fixedContainer.addView(fixedRow)
-            dynamicContainer.addView(dynamicRow)
-        }
-
-        val totalPagesFixed = createTotalFixedRow("ИТОГО (стр.)")
-        val totalPagesDynamic = createTotalDynamicRow(data.dates, data.totals) { value ->
+        // 1. СНАЧАЛА ИТОГО (страницы) - серые строки В САМОМ ВЕРХУ
+        fixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
+        dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totals) { value ->
             value.toString()
-        }
-        fixedContainer.addView(totalPagesFixed)
-        dynamicContainer.addView(totalPagesDynamic)
+        })
 
-        val totalTimeFixed = createTotalFixedRow("ИТОГО (часы)")
-        val totalTimeDynamic = createTotalDynamicRow(data.dates, data.totalTime) { value ->
+        // 2. ИТОГО (часы) - вторая серая строка
+        fixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
+        dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTime) { value ->
             formatHours(value)
-        }
-        fixedContainer.addView(totalTimeFixed)
-        dynamicContainer.addView(totalTimeDynamic)
+        })
 
-        alignAllRows(fixedContainer, dynamicContainer)
+        // 3. ЗАТЕМ Заголовки (синие)
+        fixedContainer.addView(createFixedHeaderRow())
+        dynamicContainer.addView(createDynamicHeaderRow(data.dates))
+
+        // 4. ПОТОМ Данные книг (с двухстрочным отображением страницы/время)
+        data.books.forEach { book ->
+            fixedContainer.addView(createFixedRow(book))
+            dynamicContainer.addView(createDynamicRow(book, data.dates))
+        }
+
+        alignRowHeights(fixedContainer, dynamicContainer)
     }
 
     private fun createFixedHeaderRow(): LinearLayout {
@@ -83,15 +80,45 @@ class HistoryTableAdapter(
     private fun createDynamicHeaderRow(dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-
             addView(createDynamicCell("Автор", 150, isHeader = true))
             addView(createDynamicCell("Статус", 100, isHeader = true))
             addView(createDynamicCell("Категория", 80, isHeader = true))
-
             dates.forEach { date ->
                 addView(createDynamicCell(dateFormatter.format(date), 80, isHeader = true))
             }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
 
+    private fun createTotalFixedRow(title: String): LinearLayout {
+        return LinearLayout(fixedColumnLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(createFixedCell(title, 200, isTotal = true))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
+
+    private fun <T : Number> createTotalDynamicRow(
+        dates: List<LocalDate>,
+        totals: Map<LocalDate, T>,
+        formatter: (Double) -> String
+    ): LinearLayout {
+        return LinearLayout(dynamicColumnsLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(createDynamicCell("", 150, isTotal = true))
+            addView(createDynamicCell("", 100, isTotal = true))
+            addView(createDynamicCell("", 80, isTotal = true))
+            dates.forEach { date ->
+                val value = totals[date]?.toDouble() ?: 0.0
+                val displayText = if (value > 0) formatter(value) else "—"
+                addView(createDynamicCell(displayText, 80, isTotal = true, isMultiLine = false))
+            }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 rowHeightPx
@@ -118,11 +145,9 @@ class HistoryTableAdapter(
     private fun createDynamicRow(book: BookProgress, dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-
             addView(createDynamicCell(book.author, 150))
             addView(createDynamicCell(book.status, 100))
             addView(createDynamicCell(book.category, 80))
-
             dates.forEach { date ->
                 val pages = book.dailyProgress[date] ?: 0
                 val hours = book.dailyTime[date] ?: 0.0
@@ -133,43 +158,6 @@ class HistoryTableAdapter(
                 }
                 addView(createDynamicCell(displayText, 80, isMultiLine = true))
             }
-
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                rowHeightPx
-            )
-        }
-    }
-
-    private fun createTotalFixedRow(title: String): LinearLayout {
-        return LinearLayout(fixedColumnLayout!!.context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            addView(createFixedCell(title, 200, isTotal = true))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                rowHeightPx
-            )
-        }
-    }
-
-    private fun <T : Number> createTotalDynamicRow(
-        dates: List<LocalDate>,
-        totals: Map<LocalDate, T>,
-        formatter: (Double) -> String
-    ): LinearLayout {
-        return LinearLayout(dynamicColumnsLayout!!.context).apply {
-            orientation = LinearLayout.HORIZONTAL
-
-            addView(createDynamicCell("", 150, isTotal = true))
-            addView(createDynamicCell("", 100, isTotal = true))
-            addView(createDynamicCell("", 80, isTotal = true))
-
-            dates.forEach { date ->
-                val value = totals[date]?.toDouble() ?: 0.0
-                val displayText = if (value > 0) formatter(value) else "—"
-                addView(createDynamicCell(displayText, 80, isTotal = true, isMultiLine = true))
-            }
-
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 rowHeightPx
@@ -189,16 +177,23 @@ class HistoryTableAdapter(
             this.text = text
             setPadding(12, 12, 12, 12)
             textSize = 14f
-            // ВСЕГДА ЦЕНТРИРУЕМ
             gravity = Gravity.CENTER
+            maxLines = 1
 
-            if (isHeader) {
-                setTextColor(resources.getColor(android.R.color.white, null))
-                setBackgroundColor(resources.getColor(R.color.purple_500, null))
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            } else if (isTotal) {
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setBackgroundColor(resources.getColor(android.R.color.darker_gray, null))
+            when {
+                isHeader -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(resources.getColor(R.color.purple_500, null))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                isTotal -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(Color.parseColor("#757575"))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                else -> {
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
             }
 
             if (isClickable && onClick != null) {
@@ -222,18 +217,24 @@ class HistoryTableAdapter(
         return TextView(dynamicColumnsLayout!!.context).apply {
             this.text = text
             setPadding(12, 12, 12, 12)
-            textSize = if (isMultiLine) 11f else 14f
-            // ВСЕГДА ЦЕНТРИРУЕМ
+            textSize = if (isMultiLine) 11f else 13f
             gravity = Gravity.CENTER
             maxLines = if (isMultiLine) 2 else 1
 
-            if (isHeader) {
-                setTextColor(resources.getColor(android.R.color.white, null))
-                setBackgroundColor(resources.getColor(R.color.purple_500, null))
-                setTypeface(null, android.graphics.Typeface.BOLD)
-            } else if (isTotal) {
-                setTypeface(null, android.graphics.Typeface.BOLD)
-                setBackgroundColor(resources.getColor(android.R.color.darker_gray, null))
+            when {
+                isHeader -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(resources.getColor(R.color.purple_500, null))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                isTotal -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(Color.parseColor("#757575"))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                else -> {
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
             }
 
             if (isClickable && onClick != null) {
@@ -252,19 +253,22 @@ class HistoryTableAdapter(
         return if (h > 0) "${h}ч ${m}мин" else "${m}мин"
     }
 
-    private fun alignAllRows(fixedContainer: LinearLayout, dynamicContainer: LinearLayout) {
-        val fixedChildren = fixedContainer.children.toList()
-        val dynamicChildren = dynamicContainer.children.toList()
+    private fun alignRowHeights(fixedContainer: LinearLayout, dynamicContainer: LinearLayout) {
+        fixedContainer.post {
+            val fixedChildren = fixedContainer.children.toList()
+            val dynamicChildren = dynamicContainer.children.toList()
 
-        val minSize = minOf(fixedChildren.size, dynamicChildren.size)
-        for (i in 0 until minSize) {
-            val fixedChild = fixedChildren[i]
-            val dynamicChild = dynamicChildren[i]
+            val minSize = minOf(fixedChildren.size, dynamicChildren.size)
+            for (i in 0 until minSize) {
+                val fixedChild = fixedChildren[i]
+                val dynamicChild = dynamicChildren[i]
 
-            fixedChild.layoutParams.height = rowHeightPx
-            dynamicChild.layoutParams.height = rowHeightPx
-            fixedChild.requestLayout()
-            dynamicChild.requestLayout()
+                val maxHeight = maxOf(fixedChild.height, dynamicChild.height, rowHeightPx)
+                fixedChild.layoutParams.height = maxHeight
+                dynamicChild.layoutParams.height = maxHeight
+                fixedChild.requestLayout()
+                dynamicChild.requestLayout()
+            }
         }
     }
 
