@@ -6,8 +6,6 @@
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-
-
     <!-- Панель управления периодом -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -53,7 +51,7 @@
 
     </LinearLayout>
 
-    <!-- ПОЛЕ ПОИСКА (новое) -->
+    <!-- Поле поиска -->
     <com.google.android.material.textfield.TextInputLayout
         android:id="@+id/searchLayout"
         android:layout_width="match_parent"
@@ -71,6 +69,20 @@
             android:maxLines="1" />
 
     </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Кнопка Статистика -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/statsToggleButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="8dp"
+        android:text="📊 Статистика"
+        android:backgroundTint="?attr/colorPrimary"
+        android:textColor="@android:color/white"
+        app:icon="@drawable/ic_baseline_show_chart_24"
+        app:iconGravity="textStart" />
 
     <!-- Вертикальный скролл для таблицы -->
     <ScrollView

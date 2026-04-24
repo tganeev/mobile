@@ -25,13 +25,17 @@ class HistoryTableAdapter(
     fun setData(
         data: HistoryTableData,
         fixedContainer: LinearLayout,
-        dynamicContainer: LinearLayout
+        dynamicContainer: LinearLayout,
+        showStats: Boolean = true
     ) {
         this.data = data
         this.fixedColumnLayout = fixedContainer
         this.dynamicColumnsLayout = dynamicContainer
+        this.showStats = showStats
         render()
     }
+
+    private var showStats = true
 
     private fun render() {
         val data = this.data ?: return
@@ -41,22 +45,26 @@ class HistoryTableAdapter(
         fixedContainer.removeAllViews()
         dynamicContainer.removeAllViews()
 
-        // ===== 1. ИТОГО (над заголовками) =====
-        fixedContainer.addView(createTotalFixedRow("ИТОГО (стр)"))
-        dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { value ->
-            formatTotalPages(value)
-        })
+        // ТОЛЬКО ЕСЛИ СТАТИСТИКА ВКЛЮЧЕНА
+        if (showStats) {
+            // ИТОГО (стр.)
+            fixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
+            dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { value ->
+                formatTotalPages(value)
+            })
 
-        fixedContainer.addView(createTotalFixedRow("ИТОГО (время)"))
-        dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { value ->
-            formatHoursShort(value)
-        })
+            // ИТОГО (часы)
+            fixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
+            dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { value ->
+                formatHoursShort(value)
+            })
+        }
 
-        // ===== 2. ЗАГОЛОВКИ ТАБЛИЦЫ =====
+        // Заголовки таблицы (всегда)
         fixedContainer.addView(createFixedHeaderRow())
         dynamicContainer.addView(createDynamicHeaderRow(data.dates))
 
-        // ===== 3. ДАННЫЕ КНИГ =====
+        // Данные книг (всегда)
         data.books.forEach { book ->
             fixedContainer.addView(createFixedRow(book))
             dynamicContainer.addView(createDynamicRow(book, data.dates))

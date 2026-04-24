@@ -1,7 +1,8 @@
 package org.readium.r2.testapp.history
 
-import android.app.DatePickerDialog
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,10 +14,7 @@ import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentHistoryBinding
 import org.readium.r2.testapp.reader.ReaderActivityContract
-import java.time.LocalDate
-import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.util.Calendar
 
 class HistoryFragment : Fragment() {
 
@@ -25,6 +23,9 @@ class HistoryFragment : Fragment() {
 
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
+
+    // Флаг для отображения/скрытия статистики
+    private var showStats = true
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,12 +41,11 @@ class HistoryFragment : Fragment() {
 
         setupPeriodControls()
         setupSearch()
+        setupStatsToggle()
         setupObservers()
 
         viewModel.loadData()
     }
-
-
 
     private fun setupPeriodControls() {
         binding.prevMonthButton.setOnClickListener {
@@ -57,54 +57,42 @@ class HistoryFragment : Fragment() {
         }
 
         binding.calendarButton.setOnClickListener {
-            showDateRangePicker()
+            // TODO: Выбор произвольного периода
+            Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_LONG).show()
         }
     }
 
-    private fun showDateRangePicker() {
-        val currentStart = viewModel.currentStartDate
-        val currentEnd = viewModel.currentEndDate
-
-        // Создаём диалог выбора начальной даты
-        val calendar = Calendar.getInstance()
-        calendar.set(currentStart.year, currentStart.monthValue - 1, currentStart.dayOfMonth)
-
-        DatePickerDialog(
-            requireContext(),
-            { _, year, month, day ->
-                val startDate = LocalDate.of(year, month + 1, day)
-                showEndDatePicker(startDate)
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).apply {
-            setTitle("Выберите начальную дату")
-        }.show()
+    private fun setupSearch() {
+        binding.searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                viewModel.updateSearchQuery(s?.toString() ?: "")
+            }
+        })
     }
 
-    private fun showEndDatePicker(startDate: LocalDate) {
-        val currentEnd = viewModel.currentEndDate
+    private fun setupStatsToggle() {
+        binding.statsToggleButton.setOnClickListener {
+            showStats = !showStats
+            updateStatsVisibility()
 
-        val calendar = Calendar.getInstance()
-        calendar.set(currentEnd.year, currentEnd.monthValue - 1, currentEnd.dayOfMonth)
+            // Меняем текст и иконку кнопки
+            if (showStats) {
+                binding.statsToggleButton.text = "📊 Статистика"
+                binding.statsToggleButton.icon = androidx.core.content.ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
+            } else {
+                binding.statsToggleButton.text = "📊 Показать статистику"
+                binding.statsToggleButton.icon = null
+            }
+        }
+    }
 
-        DatePickerDialog(
-            requireContext(),
-            { _, year, month, day ->
-                val endDate = LocalDate.of(year, month + 1, day)
-                if (endDate.isBefore(startDate)) {
-                    Snackbar.make(binding.root, "Конечная дата не может быть раньше начальной", Snackbar.LENGTH_LONG).show()
-                } else {
-                    viewModel.loadDataForRange(startDate, endDate)
-                }
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).apply {
-            setTitle("Выберите конечную дату")
-        }.show()
+    private fun updateStatsVisibility() {
+        // Перерисовываем таблицу с учётом флага showStats
+        viewModel.filteredTableData.value?.let { data ->
+            renderTable(data, showStats)
+        }
     }
 
     private fun setupObservers() {
@@ -123,30 +111,6 @@ class HistoryFragment : Fragment() {
         }
 
         lifecycleScope.launch {
-            viewModel.tableData.collect { data ->
-                if (data != null) {
-                    if (data.books.isEmpty()) {
-                        binding.emptyText.visibility = View.VISIBLE
-                        binding.tableScrollView.visibility = View.GONE
-                    } else {
-                        binding.emptyText.visibility = View.GONE
-                        binding.tableScrollView.visibility = View.VISIBLE
-                        renderTable(data)
-                    }
-                }
-            }
-        }
-
-        lifecycleScope.launch {
-            viewModel.errorMessage.collect { error ->
-                if (error != null) {
-                    Snackbar.make(binding.root, error, Snackbar.LENGTH_LONG).show()
-                    viewModel.clearError()
-                }
-            }
-        }
-
-        lifecycleScope.launch {
             viewModel.filteredTableData.collect { data ->
                 if (data != null) {
                     if (data.books.isEmpty()) {
@@ -160,25 +124,23 @@ class HistoryFragment : Fragment() {
                     } else {
                         binding.emptyText.visibility = View.GONE
                         binding.tableScrollView.visibility = View.VISIBLE
-                        renderTable(data)
+                        renderTable(data, showStats)
                     }
+                }
+            }
+        }
+
+        lifecycleScope.launch {
+            viewModel.errorMessage.collect { error ->
+                if (error != null) {
+                    Snackbar.make(binding.root, error, Snackbar.LENGTH_LONG).show()
+                    viewModel.clearError()
                 }
             }
         }
     }
 
-    private fun setupSearch() {
-        binding.searchInput.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {
-                viewModel.updateSearchQuery(s?.toString() ?: "")
-            }
-        })
-    }
-
-
-    private fun renderTable(data: HistoryTableData) {
+    private fun renderTable(data: HistoryTableData, showStats: Boolean) {
         if (!::tableAdapter.isInitialized) {
             tableAdapter = HistoryTableAdapter { bookId ->
                 val intent = ReaderActivityContract().createIntent(
@@ -192,7 +154,8 @@ class HistoryFragment : Fragment() {
         tableAdapter.setData(
             data = data,
             fixedContainer = binding.fixedColumnContainer,
-            dynamicContainer = binding.dynamicColumnsContainer
+            dynamicContainer = binding.dynamicColumnsContainer,
+            showStats = showStats
         )
     }
 
