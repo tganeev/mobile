@@ -9,8 +9,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.Application as App
-import org.readium.r2.testapp.data.model.Book
-import org.readium.r2.testapp.data.model.ReadingStat
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -32,7 +30,6 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private val _currentMonth = MutableStateFlow(YearMonth.now())
     val currentMonth: StateFlow<YearMonth> = _currentMonth.asStateFlow()
 
-    // Исправлено: используем forLanguageTag вместо устаревшего конструктора
     private val monthFormatter = DateTimeFormatter.ofPattern("LLLL yyyy", Locale.forLanguageTag("ru"))
 
     fun loadData() {
@@ -63,7 +60,6 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             stat.date in startDate..endDate
         }
 
-        // Группируем статистику по книгам
         val statsByBook = statsInRange.groupBy { it.bookId }
 
         val dates = mutableListOf<LocalDate>()
@@ -76,8 +72,9 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         val bookProgressList = books.mapNotNull { book ->
             val bookId = book.id ?: return@mapNotNull null
 
+            // Исправлено: вычисляем статус на основе pagesRead
             val statusText = when {
-                book.pagesRead > 0 && book.pagesRead >= (book.totalPages ?: Int.MAX_VALUE) -> "Завершено"
+                book.pagesRead > 0 && book.totalPages != null && book.pagesRead >= book.totalPages -> "Завершено"
                 book.pagesRead > 0 -> "В процессе"
                 else -> "В плане"
             }
@@ -103,22 +100,28 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
             )
         }.sortedBy { it.title }
 
-        // Итоги по дням
-        val totals = dates.associateWith { date ->
-            bookProgressList.sumOf { it.dailyProgress[date] ?: 0 }
+        // Рассчитываем итоги по датам
+        val totalsByDate = dates.associateWith { date ->
+            bookProgressList.sumOf { it.dailyProgress[date] ?: 0 }.toDouble()
         }
 
-        val totalTime = dates.associateWith { date ->
+        val totalTimeByDate = dates.associateWith { date ->
             bookProgressList.sumOf { it.dailyTime[date] ?: 0.0 }
         }
+
+        // Общие суммы за период
+        val totalPagesSum = totalsByDate.values.sum()
+        val totalHoursSum = totalTimeByDate.values.sum()
 
         return HistoryTableData(
             periodStart = startDate,
             periodEnd = endDate,
             dates = dates,
             books = bookProgressList,
-            totals = totals,
-            totalTime = totalTime
+            totalsByDate = totalsByDate,
+            totalTimeByDate = totalTimeByDate,
+            totalPagesSum = totalPagesSum,
+            totalHoursSum = totalHoursSum
         )
     }
 

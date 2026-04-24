@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentHistoryBinding
 import org.readium.r2.testapp.reader.ReaderActivityContract
+import java.time.format.DateTimeFormatter
 
 class HistoryFragment : Fragment() {
 
@@ -63,17 +64,17 @@ class HistoryFragment : Fragment() {
     private fun setupObservers() {
         lifecycleScope.launch {
             viewModel.currentMonth.collect { month ->
-                binding.periodTitle.text = viewModel.getFormattedMonth()
+                val startDate = month.atDay(1)
+                val endDate = month.atEndOfMonth()
+                val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+                val periodText = "${startDate.format(dateFormatter)} - ${endDate.format(dateFormatter)}"
+                binding.periodTitle.text = periodText
             }
         }
 
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
                 binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-                if (!isLoading) {
-                    // Убираем старые ссылки, которые могли вызвать ошибку
-                    // tableScrollView больше не существует
-                }
             }
         }
 
@@ -103,7 +104,6 @@ class HistoryFragment : Fragment() {
     private fun renderTable(data: HistoryTableData) {
         if (!::tableAdapter.isInitialized) {
             tableAdapter = HistoryTableAdapter { bookId ->
-                // Открываем книгу по клику на название
                 val intent = ReaderActivityContract().createIntent(
                     requireContext(),
                     ReaderActivityContract.Arguments(bookId)

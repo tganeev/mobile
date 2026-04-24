@@ -62,7 +62,7 @@
 
     </LinearLayout>
 
-    <!-- Вертикальный скролл для всей таблицы -->
+    <!-- Вертикальный скролл для таблицы -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -84,7 +84,6 @@
 
             <!-- Горизонтальный скролл для остальных колонок -->
             <HorizontalScrollView
-                android:id="@+id/horizontalScrollView"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"

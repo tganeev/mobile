@@ -7,8 +7,10 @@ data class HistoryTableData(
     val periodEnd: LocalDate,
     val dates: List<LocalDate>,
     val books: List<BookProgress>,
-    val totals: Map<LocalDate, Int>,
-    val totalTime: Map<LocalDate, Double>
+    val totalsByDate: Map<LocalDate, Double>,   // суммы страниц по датам
+    val totalTimeByDate: Map<LocalDate, Double>, // суммы часов по датам
+    val totalPagesSum: Double,                   // общая сумма страниц за период
+    val totalHoursSum: Double                    // общая сумма часов за период
 )
 
 data class BookProgress(
