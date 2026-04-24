@@ -6,6 +6,8 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -24,7 +26,6 @@ class HistoryFragment : Fragment() {
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
 
-    // Флаг для отображения/скрытия статистики
     private var showStats = true
 
     override fun onCreateView(
@@ -42,6 +43,7 @@ class HistoryFragment : Fragment() {
         setupPeriodControls()
         setupSearch()
         setupStatsToggle()
+        setupFocusHandling()
         setupObservers()
 
         viewModel.loadData()
@@ -57,7 +59,6 @@ class HistoryFragment : Fragment() {
         }
 
         binding.calendarButton.setOnClickListener {
-            // TODO: Выбор произвольного периода
             Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_LONG).show()
         }
     }
@@ -70,26 +71,64 @@ class HistoryFragment : Fragment() {
                 viewModel.updateSearchQuery(s?.toString() ?: "")
             }
         })
+
+        // При нажатии на Done — скрываем клавиатуру и убираем курсор
+        binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                hideKeyboardAndClearFocus()
+                true
+            } else false
+        }
     }
 
+    private fun setupFocusHandling() {
+        // При нажатии в любую область экрана (кроме поля поиска) — убираем фокус
+        binding.root.setOnTouchListener { _, _ ->
+            hideKeyboardAndClearFocus()
+            false  // Возвращаем false, чтобы не блокировать другие touch-события
+        }
+
+        // Запрещаем всплывание клавиатуры при автоматическом получении фокуса
+        binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                hideKeyboardAndClearFocus()
+            }
+        }
+    }
+
+    private fun hideKeyboardAndClearFocus() {
+        // Скрываем клавиатуру
+        val imm = requireContext().getSystemService(android.app.Activity.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(binding.searchInput.windowToken, 0)
+
+        // Убираем курсор и фокус с поля поиска
+        binding.searchInput.clearFocus()
+        binding.searchInput.isCursorVisible = false
+    }
+
+    // Восстанавливаем курсор при фокусе на поле поиска
     private fun setupStatsToggle() {
         binding.statsToggleButton.setOnClickListener {
             showStats = !showStats
             updateStatsVisibility()
 
-            // Меняем текст и иконку кнопки
             if (showStats) {
                 binding.statsToggleButton.text = "📊 Статистика"
-                binding.statsToggleButton.icon = androidx.core.content.ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
+                binding.statsToggleButton.icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
             } else {
                 binding.statsToggleButton.text = "📊 Показать статистику"
                 binding.statsToggleButton.icon = null
             }
         }
+
+        // Восстанавливаем курсор при фокусе на поле поиска
+        binding.searchInput.setOnClickListener {
+            binding.searchInput.isCursorVisible = true
+            binding.searchInput.requestFocus()
+        }
     }
 
     private fun updateStatsVisibility() {
-        // Перерисовываем таблицу с учётом флага showStats
         viewModel.filteredTableData.value?.let { data ->
             renderTable(data, showStats)
         }
