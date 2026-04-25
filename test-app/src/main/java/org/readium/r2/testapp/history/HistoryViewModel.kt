@@ -35,18 +35,13 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     )
     val periodRange: StateFlow<Pair<LocalDate, LocalDate>> = _periodRange.asStateFlow()
 
-    // ПОИСК
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private val _filteredTableData = MutableStateFlow<HistoryTableData?>(null)
     val filteredTableData: StateFlow<HistoryTableData?> = _filteredTableData.asStateFlow()
 
-    val currentStartDate: LocalDate get() = _periodRange.value.first
-    val currentEndDate: LocalDate get() = _periodRange.value.second
-
     init {
-        // Наблюдаем за изменениями поиска и данных
         viewModelScope.launch {
             combine(
                 _tableData,
@@ -55,12 +50,10 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 if (data == null) return@combine null
                 if (query.isBlank()) return@combine data
 
-                // Фильтруем книги по названию
                 val filteredBooks = data.books.filter { book ->
                     book.title.contains(query, ignoreCase = true)
                 }
 
-                // Пересчитываем итоги для отфильтрованных книг
                 val totalsByDate = data.dates.associateWith { date ->
                     filteredBooks.sumOf { it.dailyProgress[date] ?: 0 }.toDouble()
                 }
@@ -112,7 +105,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun previousMonth() {
-        val (startDate, endDate) = _periodRange.value
+        val (startDate, _) = _periodRange.value
         val month = YearMonth.from(startDate)
         val previousMonth = month.minusMonths(1)
         val newStart = previousMonth.atDay(1)
@@ -121,12 +114,18 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun nextMonth() {
-        val (startDate, endDate) = _periodRange.value
+        val (startDate, _) = _periodRange.value
         val month = YearMonth.from(startDate)
         val nextMonth = month.plusMonths(1)
         val newStart = nextMonth.atDay(1)
         val newEnd = nextMonth.atEndOfMonth()
         loadDataForRange(newStart, newEnd)
+    }
+
+    fun getFormattedMonth(): String {
+        val (startDate, endDate) = _periodRange.value
+        val formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+        return "${startDate.format(formatter)} - ${endDate.format(formatter)}"
     }
 
     private suspend fun loadHistoryData(startDate: LocalDate, endDate: LocalDate): HistoryTableData {

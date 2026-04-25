@@ -10,30 +10,30 @@ data class SyncBookDTO(
     val title: String,
 
     @SerializedName("author")
-    val author: String? = null,
+    val author: String?,
 
     @SerializedName("totalPages")
-    val totalPages: Int? = null,
+    val totalPages: Int?,
 
     @SerializedName("language")
-    val language: String? = null,
+    val language: String?,
 
     @SerializedName("categoryId")
-    val categoryId: Long? = null,
+    val categoryId: Long?,
 
     @SerializedName("readingStats")
-    val readingStats: List<SyncReadingStatDTO> = emptyList(),
+    val readingStats: List<SyncReadingStatDTO>
 )
 
 data class SyncReadingStatDTO(
     @SerializedName("date")
-    val date: String, // Используем String для даты в формате ISO
+    val date: String,
 
     @SerializedName("pagesRead")
     val pagesRead: Int,
 
     @SerializedName("hoursRead")
-    val hoursRead: Double,
+    val hoursRead: Double
 )
 
 data class SyncRequestDTO(
@@ -41,7 +41,7 @@ data class SyncRequestDTO(
     val username: String,
 
     @SerializedName("books")
-    val books: List<SyncBookDTO>,
+    val books: List<SyncBookDTO>
 )
 
 data class SyncResponseDTO(
@@ -64,5 +64,5 @@ data class SyncResponseDTO(
     val message: String,
 
     @SerializedName("error")
-    val error: String? = null,
+    val error: String?
 )

@@ -1,7 +1,7 @@
 ================================================================================
 ПОЛНЫЙ ИСХОДНЫЙ КОД ANDROID STUDIO ПРОЕКТА
 ================================================================================
-Дата создания: Thu Apr 23 03:01:46 PM +05 2026
+Дата создания: Sat Apr 25 07:10:39 PM +05 2026
 Директория проекта: /opt/goinfre/kindlyfr/Projects/pkms/mobile/test-app
 ================================================================================
 
@@ -280,7 +280,7 @@
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/MainActivity.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 4.0K
 ================================================================================
 
 package org.readium.r2.testapp
@@ -333,10 +333,10 @@ class MainActivity : AppCompatActivity() {
         appBarConfiguration = AppBarConfiguration(
             setOf(
                 R.id.menu_fragment,
-                R.id.bookshelf_fragment,
-                // R.id.historyFragment удалён отсюда, чтобы появилась стрелка "Назад"
-                R.id.alarm_fragment,
-                R.id.sleepStatsFragment
+                //R.id.bookshelf_fragment,
+                //R.id.historyFragment,
+               // R.id.alarm_fragment,
+                //R.id.sleepStatsFragment
             )
         )
         setupActionBarWithNavController(navController, appBarConfiguration)
@@ -581,12 +581,6 @@ class BookshelfAdapter(
 РАЗМЕР: 4.0K
 ================================================================================
 
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.bookshelf
 
 import android.app.Application
@@ -605,8 +599,7 @@ import org.readium.r2.testapp.utils.EventChannel
 
 class BookshelfViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val app get() =
-        getApplication<org.readium.r2.testapp.Application>()
+    private val app get() = getApplication<org.readium.r2.testapp.Application>()
 
     val channel = EventChannel(Channel<Event>(Channel.BUFFERED), viewModelScope)
     val books = app.bookRepository.books()
@@ -615,7 +608,6 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 app.bookRepository.updateBookTitleAndAuthor(bookId, title, author)
-                // Обновляем список книг - refresh
                 app.bookRepository.books().firstOrNull()
                 android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author")
             } catch (e: Exception) {
@@ -624,10 +616,11 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun deletePublication(book: Book) =
-        viewModelScope.launch {
-            app.bookshelf.deleteBook(book)
-        }
+    fun deletePublication(book: Book) = viewModelScope.launch {
+        app.bookshelf.deleteBook(book)
+        // После удаления обновляем список
+        app.bookRepository.books().firstOrNull()
+    }
 
     fun importPublicationFromStorage(uri: Uri) {
         app.bookshelf.importPublicationFromStorage(uri)
@@ -641,9 +634,7 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         app.bookshelf.addPublicationFromWeb(url)
     }
 
-    fun openPublication(
-        bookId: Long,
-    ) {
+    fun openPublication(bookId: Long) {
         viewModelScope.launch {
             app.readerRepository
                 .open(bookId)
@@ -658,17 +649,10 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     sealed class Event {
-
-        class OpenPublicationError(
-            val error: OpeningError,
-        ) : Event()
-
-        class LaunchReader(
-            val arguments: ReaderActivityContract.Arguments,
-        ) : Event()
+        class OpenPublicationError(val error: OpeningError) : Event()
+        class LaunchReader(val arguments: ReaderActivityContract.Arguments) : Event()
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/bookshelf/EditBookDialogFragment.kt
@@ -789,12 +773,6 @@ class EditBookDialogFragment : DialogFragment() {
 РАЗМЕР: 12K
 ================================================================================
 
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.bookshelf
 
 import android.content.Intent
@@ -815,6 +793,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.readium.r2.shared.DelicateReadiumApi
@@ -826,13 +805,6 @@ import org.readium.r2.testapp.databinding.FragmentBookshelfBinding
 import org.readium.r2.testapp.opds.GridAutoFitLayoutManager
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.viewLifecycle
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
-import androidx.navigation.findNavController
-import com.google.android.material.snackbar.Snackbar
-
-
 
 class BookshelfFragment : Fragment() {
 
@@ -866,9 +838,6 @@ class BookshelfFragment : Fragment() {
         setHasOptionsMenu(true)
     }
 
-
-
-
     fun performSync() {
         lifecycleScope.launch {
             val snackbar = Snackbar.make(
@@ -879,18 +848,18 @@ class BookshelfFragment : Fragment() {
             snackbar.show()
 
             try {
-                val app = requireContext().applicationContext as Application
                 val result = app.syncManager.syncAllBooks()
 
                 snackbar.dismiss()
 
                 result.onSuccess { response ->
-                    val message = "Синхронизация завершена:\n" +
-                        "📚 Создано книг: ${response.booksCreated}\n" +
-                        "🔄 Обновлено книг: ${response.booksUpdated}\n" +
-                        "📊 Создано записей: ${response.statsCreated}\n" +
-                        "🔄 Обновлено записей: ${response.statsUpdated}"
-
+                    val message = buildString {
+                        append("Синхронизация завершена:\n")
+                        append("📚 Создано книг: ${response.booksCreated}\n")
+                        append("🔄 Обновлено книг: ${response.booksUpdated}\n")
+                        append("📊 Создано записей: ${response.statsCreated}\n")
+                        append("🔄 Обновлено записей: ${response.statsUpdated}")
+                    }
                     Snackbar.make(requireView(), message, Snackbar.LENGTH_LONG).show()
                 }.onFailure { error ->
                     Snackbar.make(requireView(), "Ошибка: ${error.message}", Snackbar.LENGTH_LONG).show()
@@ -901,11 +870,6 @@ class BookshelfFragment : Fragment() {
             }
         }
     }
-    private fun navigateToHistory() {
-        val navController = requireView().findNavController()
-        navController.navigate(R.id.action_bookshelf_to_history)
-    }
-
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -915,8 +879,6 @@ class BookshelfFragment : Fragment() {
         binding = FragmentBookshelfBinding.inflate(inflater, container, false)
         return binding.root
     }
-
-
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -933,10 +895,6 @@ class BookshelfFragment : Fragment() {
             },
             onBookLongClick = { book -> confirmDeleteBook(book) }
         )
-        bookshelfAdapter.setOnEditBookClick { book ->
-            showEditBookDialog(book)
-        }
-
         bookshelfAdapter.setOnEditBookClick { book ->
             showEditBookDialog(book)
         }
@@ -961,12 +919,9 @@ class BookshelfFragment : Fragment() {
             setHasFixedSize(true)
             layoutManager = GridAutoFitLayoutManager(requireContext(), 120)
             adapter = bookshelfAdapter
-            addItemDecoration(
-                VerticalSpaceItemDecoration(
-                    10
-                )
-            )
+            addItemDecoration(VerticalSpaceItemDecoration(10))
         }
+
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 bookshelfViewModel.books.collectLatest {
@@ -1012,7 +967,6 @@ class BookshelfFragment : Fragment() {
                     urlEditText.error = getString(R.string.invalid_url)
                     return@setPositiveButton
                 }
-
                 bookshelfViewModel.addPublicationFromWeb(url)
             }
             .show()
@@ -1023,7 +977,6 @@ class BookshelfFragment : Fragment() {
             is BookshelfViewModel.Event.OpenPublicationError -> {
                 event.error.toUserError().show(requireActivity())
             }
-
             is BookshelfViewModel.Event.LaunchReader -> {
                 val intent = ReaderActivityContract().createIntent(
                     requireContext(),
@@ -1036,7 +989,6 @@ class BookshelfFragment : Fragment() {
 
     class VerticalSpaceItemDecoration(private val verticalSpaceHeight: Int) :
         RecyclerView.ItemDecoration() {
-
         override fun getItemOffsets(
             outRect: Rect,
             view: View,
@@ -1065,7 +1017,6 @@ class BookshelfFragment : Fragment() {
             .show()
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/shared/views/Group.kt
@@ -5820,14 +5771,6 @@ class ReaderRepository(
 РАЗМЕР: 20K
 ================================================================================
 
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
-@file:OptIn(ExperimentalReadiumApi::class)
-
 package org.readium.r2.testapp.reader
 
 import android.graphics.Color
@@ -5940,31 +5883,13 @@ class ReaderViewModel(
     private var lastSavedTotalSeconds: Long = 0
 
     init {
-
-        var saveJob: Job? = null
-
-        fun startAutoSave() {
-            saveJob?.cancel()
-            saveJob = viewModelScope.launch {
-                while (isActive) {
-                    delay(30_000) // Сохранять каждые 30 секунд
-                    savePagesAndTime()
-                }
-            }
-        }
-
-        fun stopAutoSave() {
-            saveJob?.cancel()
-            saveJob = null
-        }
-
         viewModelScope.launch {
             bookRepository.get(bookId)?.let { book ->
                 readingTimer.setTime(book.readingTime)
-                lastSavedTotalSeconds = book.readingTime // ✅ Инициализируем точку отсчета
+                lastSavedTotalSeconds = book.readingTime
                 lastSavedPage = book.pagesRead
-                maxReachedPage = book.pagesRead
-                Timber.d("Loaded stats: time=${book.readingTime}s, pages=${book.pagesRead}")
+                maxReachedPage = book.currentPage
+                Timber.d("Loaded stats: time=${book.readingTime}s, pages=${book.pagesRead}, currentPage=${book.currentPage}")
             }
 
             try {
@@ -5972,19 +5897,18 @@ class ReaderViewModel(
                 Timber.d("Total positions for book $bookId: $_totalPositions")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to get total positions, using fallback")
-                _totalPositions = 100 // fallback для PDF
+                _totalPositions = 100
             }
         }
     }
+
     fun startReadingTimer() {
         readingTimer.start()
-
-        // Запускаем периодическое сохранение
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
             while (isActive) {
                 delay(AUTO_SAVE_INTERVAL_MS)
-                savePagesAndTime() // Сохраняем даже без смены страницы
+                savePagesAndTime()
             }
         }
         Timber.d("Reading timer started for book $bookId")
@@ -5992,7 +5916,7 @@ class ReaderViewModel(
 
     fun pauseReadingTimer() {
         readingTimer.pause()
-        autoSaveJob?.cancel() // Отменяем периодические сохранения
+        autoSaveJob?.cancel()
         autoSaveJob = null
         Timber.d("Reading timer paused for book $bookId, elapsed: ${readingTimer.elapsedSeconds.value}s")
     }
@@ -6010,10 +5934,6 @@ class ReaderViewModel(
         } ?: publication.locatorFromLink(publication.readingOrder.firstOrNull()!!)!!
     }
 
-    /**
-     * Вычисляет номер текущей страницы на основе локатора
-     * Работает для EPUB, PDF и других форматов
-     */
     fun calculateCurrentPage(locator: Locator): Int {
         val position = locator.locations.position ?: 1
         return position.coerceAtLeast(1)
@@ -6048,7 +5968,7 @@ class ReaderViewModel(
         val currentPage = calculateCurrentPage(currentLocator)
         val today = LocalDate.now()
 
-        // === 1. Сохранение страниц (всегда, если есть прогресс) ===
+        // Сохранение страниц
         if (currentPage > maxReachedPage) {
             maxReachedPage = currentPage
         }
@@ -6058,58 +5978,51 @@ class ReaderViewModel(
             val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
             val todayStat = existingStats.find { it.date == today }
 
-            // Обновляем дневную статистику по страницам
             val newDailyPages = (todayStat?.pagesRead ?: 0) + incrementalPages
-            bookRepository.saveReadingStat(ReadingStat(
-                bookId = bookId,
-                date = today,
-                pagesRead = newDailyPages,
-                hoursRead = todayStat?.hoursRead ?: 0.0  // время не меняем здесь
-            ))
+            val hoursDelta = todayStat?.hoursRead ?: 0.0
 
-            // Обновляем общее количество страниц в книге
+            bookRepository.saveReadingStat(bookId, today, newDailyPages, hoursDelta)
+
             val book = bookRepository.get(bookId)
             val newTotalPages = (book?.pagesRead ?: 0) + incrementalPages
-            bookRepository.updateReadingStats(
+            val totalPages = book?.totalPages ?: 0
+
+            bookRepository.updateReadingProgress(
                 bookId = bookId,
-                readingTime = book?.readingTime ?: 0L,  // время не трогаем
+                readingTime = book?.readingTime ?: 0L,
                 pagesRead = newTotalPages,
-                locator = currentLocator
+                currentPage = currentPage,
+                locator = currentLocator,
+                totalPages = totalPages
             )
 
-            lastSavedPage = maxReachedPage  // ✅ Обновляем точку отсчёта для страниц
-            Timber.d("Saved pages: +$incrementalPages (total: $newTotalPages)")
+            lastSavedPage = maxReachedPage
+            Timber.d("Saved pages: +$incrementalPages (total: $newTotalPages), currentPage=$currentPage, totalPages=$totalPages")
         }
 
-        // === 2. Сохранение времени (только если прошло достаточно времени) ===
+        // Сохранение времени
         val deltaSeconds = (currentTotalSeconds - lastSavedTotalSeconds).coerceAtLeast(0)
 
-        // Сохраняем время, если прошло >= 10 секунд (чтобы не спамить БД)
         if (deltaSeconds >= 10L) {
             val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
             val todayStat = existingStats.find { it.date == today }
 
             val deltaHours = deltaSeconds / 3600.0
             val newDailyHours = (todayStat?.hoursRead ?: 0.0) + deltaHours
+            val existingPages = todayStat?.pagesRead ?: 0
 
-            bookRepository.saveReadingStat(ReadingStat(
-                bookId = bookId,
-                date = today,
-                pagesRead = todayStat?.pagesRead ?: 0,  // страницы не меняем здесь
-                hoursRead = newDailyHours
-            ))
+            bookRepository.saveReadingStat(bookId, today, existingPages, newDailyHours)
 
-            // Обновляем общее время НАПРЯМУЮ (без SUM)
             val book = bookRepository.get(bookId)
             val newTotalReadingTime = (book?.readingTime ?: 0L) + deltaSeconds
             bookRepository.updateReadingStats(
                 bookId = bookId,
                 readingTime = newTotalReadingTime,
-                pagesRead = book?.pagesRead ?: 0,  // страницы не трогаем
+                pagesRead = book?.pagesRead ?: 0,
                 locator = currentLocator
             )
 
-            lastSavedTotalSeconds = currentTotalSeconds  // ✅ Обновляем точку отсчёта для времени
+            lastSavedTotalSeconds = currentTotalSeconds
             Timber.d("Saved time: +${deltaSeconds}s (total: ${newTotalReadingTime}s)")
         }
     }
@@ -6296,7 +6209,6 @@ class ReaderViewModel(
     // ===== ON CLEARED =====
 
     override fun onCleared() {
-        // Финальное сохранение — гарантированно запишет последние секунды
         viewModelScope.launch {
             savePagesAndTime()
         }.invokeOnCompletion {
@@ -6339,7 +6251,6 @@ class ReaderViewModel(
             }
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/reader/ReaderActivityContract.kt
@@ -9406,39 +9317,451 @@ class SearchPagingSource(
 
 
 ================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/history/HistoryTableData.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
+
+package org.readium.r2.testapp.history
+
+import java.time.LocalDate
+
+data class HistoryTableData(
+    val periodStart: LocalDate,
+    val periodEnd: LocalDate,
+    val dates: List<LocalDate>,
+    val books: List<BookProgress>,
+    val totalsByDate: Map<LocalDate, Double>,   // суммы страниц по датам
+    val totalTimeByDate: Map<LocalDate, Double>, // суммы часов по датам
+    val totalPagesSum: Double,                   // общая сумма страниц за период
+    val totalHoursSum: Double                    // общая сумма часов за период
+)
+
+data class BookProgress(
+    val bookId: Long,
+    val title: String,
+    val author: String,
+    val status: String,
+    val category: String,
+    val dailyProgress: Map<LocalDate, Int>,
+    val dailyTime: Map<LocalDate, Double>
+)
+
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/history/HistoryTableAdapter.kt
+ТИП: KOTLIN
+РАЗМЕР: 16K
+================================================================================
+
+package org.readium.r2.testapp.history
+
+import android.graphics.Color
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.view.children
+import org.readium.r2.testapp.R
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+class HistoryTableAdapter(
+    private val onBookClick: (Long) -> Unit
+) {
+
+    private val dateFormatter = DateTimeFormatter.ofPattern("dd.MM")
+    private var data: HistoryTableData? = null
+    private var fixedColumnLayout: LinearLayout? = null
+    private var dynamicColumnsLayout: LinearLayout? = null
+
+    private val rowHeightPx: Int by lazy {
+        dpToPx(60)
+    }
+
+    fun setData(
+        data: HistoryTableData,
+        fixedContainer: LinearLayout,
+        dynamicContainer: LinearLayout,
+        showStats: Boolean = true
+    ) {
+        this.data = data
+        this.fixedColumnLayout = fixedContainer
+        this.dynamicColumnsLayout = dynamicContainer
+        this.showStats = showStats
+        render()
+    }
+
+    private var showStats = true
+
+    private fun render() {
+        val data = this.data ?: return
+        val fixedContainer = fixedColumnLayout ?: return
+        val dynamicContainer = dynamicColumnsLayout ?: return
+
+        fixedContainer.removeAllViews()
+        dynamicContainer.removeAllViews()
+
+        // ТОЛЬКО ЕСЛИ СТАТИСТИКА ВКЛЮЧЕНА
+        if (showStats) {
+            // ИТОГО (стр.)
+            fixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
+            dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { value ->
+                formatTotalPages(value)
+            })
+
+            // ИТОГО (часы)
+            fixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
+            dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { value ->
+                formatHoursShort(value)
+            })
+        }
+
+        // Заголовки таблицы (всегда)
+        fixedContainer.addView(createFixedHeaderRow())
+        dynamicContainer.addView(createDynamicHeaderRow(data.dates))
+
+        // Данные книг (всегда)
+        data.books.forEach { book ->
+            fixedContainer.addView(createFixedRow(book))
+            dynamicContainer.addView(createDynamicRow(book, data.dates))
+        }
+
+        alignRowHeights(fixedContainer, dynamicContainer)
+    }
+
+    private fun createFixedHeaderRow(): LinearLayout {
+        return LinearLayout(fixedColumnLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(createFixedCell("Название", 200, isHeader = true, gravity = Gravity.CENTER))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
+
+    private fun createDynamicHeaderRow(dates: List<LocalDate>): LinearLayout {
+        return LinearLayout(dynamicColumnsLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(createDynamicCell("Автор", 150, isHeader = true, gravity = Gravity.CENTER))
+            addView(createDynamicCell("Статус", 100, isHeader = true, gravity = Gravity.CENTER))
+            addView(createDynamicCell("Категория", 80, isHeader = true, gravity = Gravity.CENTER))
+            dates.forEach { date ->
+                addView(createDynamicCell(dateFormatter.format(date), 80, isHeader = true, gravity = Gravity.CENTER))
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
+
+    private fun createTotalFixedRow(title: String): LinearLayout {
+        return LinearLayout(fixedColumnLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(createFixedCell(title, 200, isTotal = true, gravity = Gravity.CENTER_VERTICAL or Gravity.START, backgroundTransparent = true, textBlack = true))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
+
+    private fun createTotalDynamicRow(
+        dates: List<LocalDate>,
+        totalsByDate: Map<LocalDate, Double>,
+        totalSum: Double,
+        formatter: (Double) -> String
+    ): LinearLayout {
+        return LinearLayout(dynamicColumnsLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+
+            addView(createMergedCell(
+                text = formatter(totalSum),
+                widthDp = 150 + 100 + 80,
+                isTotal = true,
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START,
+                backgroundTransparent = true,
+                textBlack = true
+            ))
+
+            dates.forEach { date ->
+                val value = totalsByDate[date] ?: 0.0
+                val displayText = if (value > 0) formatter(value) else "—"
+                addView(createDynamicCell(displayText, 80, isTotal = true, gravity = Gravity.CENTER, backgroundTransparent = true, textBlack = true))
+            }
+
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
+
+    private fun createMergedCell(
+        text: String,
+        widthDp: Int,
+        isTotal: Boolean = false,
+        gravity: Int = Gravity.CENTER,
+        backgroundTransparent: Boolean = false,
+        textBlack: Boolean = false
+    ): TextView {
+        return TextView(dynamicColumnsLayout!!.context).apply {
+            this.text = text
+            setPadding(12, 12, 12, 12)
+            textSize = 14f
+            this.gravity = gravity
+            maxLines = 1
+
+            if (backgroundTransparent) {
+                setBackgroundColor(Color.TRANSPARENT)
+                if (textBlack) setTextColor(Color.BLACK)
+            } else if (isTotal) {
+                setBackgroundColor(Color.parseColor("#757575"))
+                setTextColor(Color.WHITE)
+            }
+
+            if (isTotal && !textBlack && !backgroundTransparent) {
+                setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+
+            layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
+        }
+    }
+
+    private fun createFixedRow(book: BookProgress): LinearLayout {
+        return LinearLayout(fixedColumnLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(createFixedCell(
+                text = book.title,
+                widthDp = 200,
+                isClickable = true,
+                onClick = { onBookClick(book.bookId) },
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            ))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
+
+    private fun createDynamicRow(book: BookProgress, dates: List<LocalDate>): LinearLayout {
+        return LinearLayout(dynamicColumnsLayout!!.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+
+            addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            addView(createDynamicCell(book.status, 100, gravity = Gravity.CENTER))
+            addView(createDynamicCell(book.category, 80, gravity = Gravity.CENTER))
+
+            dates.forEach { date ->
+                val pages = book.dailyProgress[date] ?: 0
+                val hours = book.dailyTime[date] ?: 0.0
+                val displayText = if (pages > 0) {
+                    "${pages} стр\n${formatHoursShort(hours)}"
+                } else {
+                    "—"
+                }
+                addView(createDynamicCell(displayText, 80, isMultiLine = true, gravity = Gravity.CENTER))
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                rowHeightPx
+            )
+        }
+    }
+
+    private fun createFixedCell(
+        text: String,
+        widthDp: Int,
+        isClickable: Boolean = false,
+        onClick: (() -> Unit)? = null,
+        isHeader: Boolean = false,
+        isTotal: Boolean = false,
+        gravity: Int = Gravity.CENTER,
+        backgroundTransparent: Boolean = false,
+        textBlack: Boolean = false
+    ): TextView {
+        return TextView(fixedColumnLayout!!.context).apply {
+            this.text = text
+            setPadding(12, 12, 12, 12)
+            textSize = 14f
+            this.gravity = gravity
+            maxLines = 1
+
+            when {
+                isHeader -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(resources.getColor(R.color.purple_500, null))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                backgroundTransparent -> {
+                    setBackgroundColor(Color.TRANSPARENT)
+                    if (textBlack) setTextColor(Color.BLACK)
+                }
+                isTotal -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(Color.parseColor("#757575"))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                else -> {
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
+            }
+
+            if (isClickable && onClick != null) {
+                setOnClickListener { onClick() }
+                setTextColor(resources.getColor(R.color.purple_500, null))
+            }
+
+            layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
+        }
+    }
+
+    private fun createDynamicCell(
+        text: String,
+        widthDp: Int,
+        isClickable: Boolean = false,
+        onClick: (() -> Unit)? = null,
+        isHeader: Boolean = false,
+        isTotal: Boolean = false,
+        isMultiLine: Boolean = false,
+        gravity: Int = Gravity.CENTER,
+        backgroundTransparent: Boolean = false,
+        textBlack: Boolean = false
+    ): TextView {
+        return TextView(dynamicColumnsLayout!!.context).apply {
+            this.text = text
+            setPadding(12, 12, 12, 12)
+            textSize = if (isMultiLine) 11f else 13f
+            this.gravity = gravity
+            maxLines = if (isMultiLine) 2 else 1
+
+            when {
+                isHeader -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(resources.getColor(R.color.purple_500, null))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                backgroundTransparent -> {
+                    setBackgroundColor(Color.TRANSPARENT)
+                    if (textBlack) setTextColor(Color.BLACK)
+                }
+                isTotal -> {
+                    setTextColor(Color.WHITE)
+                    setBackgroundColor(Color.parseColor("#757575"))
+                    setTypeface(null, android.graphics.Typeface.BOLD)
+                }
+                else -> {
+                    setBackgroundColor(Color.TRANSPARENT)
+                }
+            }
+
+            if (isClickable && onClick != null) {
+                setOnClickListener { onClick() }
+                setTextColor(resources.getColor(R.color.purple_500, null))
+            }
+
+            layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
+        }
+    }
+
+    private fun formatTotalPages(value: Double): String {
+        val intValue = value.toInt()
+        return "${intValue} стр"
+    }
+
+    private fun formatHoursShort(hours: Double): String {
+        val totalMinutes = (hours * 60).toInt()
+        val h = totalMinutes / 60
+        val m = totalMinutes % 60
+        return when {
+            h > 0 && m > 0 -> "${h}ч ${m} мин"
+            h > 0 -> "${h} ч"
+            m > 0 -> "${m} мин"
+            else -> "0 мин"
+        }
+    }
+
+    private fun alignRowHeights(fixedContainer: LinearLayout, dynamicContainer: LinearLayout) {
+        fixedContainer.post {
+            val fixedChildren = fixedContainer.children.toList()
+            val dynamicChildren = dynamicContainer.children.toList()
+
+            val minSize = minOf(fixedChildren.size, dynamicChildren.size)
+            for (i in 0 until minSize) {
+                val fixedChild = fixedChildren[i] as? LinearLayout ?: continue
+                val dynamicChild = dynamicChildren[i] as? LinearLayout ?: continue
+
+                var maxHeight = rowHeightPx
+
+                for (j in 0 until fixedChild.childCount) {
+                    val view = fixedChild.getChildAt(j)
+                    maxHeight = maxOf(maxHeight, view.height)
+                }
+
+                for (j in 0 until dynamicChild.childCount) {
+                    val view = dynamicChild.getChildAt(j)
+                    maxHeight = maxOf(maxHeight, view.height)
+                }
+
+                for (j in 0 until fixedChild.childCount) {
+                    fixedChild.getChildAt(j).layoutParams.height = maxHeight
+                }
+                for (j in 0 until dynamicChild.childCount) {
+                    dynamicChild.getChildAt(j).layoutParams.height = maxHeight
+                }
+
+                fixedChild.layoutParams.height = maxHeight
+                dynamicChild.layoutParams.height = maxHeight
+                fixedChild.requestLayout()
+                dynamicChild.requestLayout()
+            }
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * (fixedColumnLayout?.context?.resources?.displayMetrics?.density ?: 1f)).toInt()
+    }
+}
+
+================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/history/HistoryFragment.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 12K
 ================================================================================
 
 package org.readium.r2.testapp.history
 
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.view.MenuProvider
+import android.view.inputmethod.InputMethodManager
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentHistoryBinding
-import org.readium.r2.testapp.ui.MenuVisibilityViewModel
+import org.readium.r2.testapp.reader.ReaderActivityContract
+import java.time.format.DateTimeFormatter
 
 class HistoryFragment : Fragment() {
+
     private var _binding: FragmentHistoryBinding? = null
     private val binding get() = _binding!!
+
     private val viewModel: HistoryViewModel by viewModels()
-    private lateinit var adapter: HistoryAdapter
-    private val menuViewModel: MenuVisibilityViewModel by activityViewModels()
+    private lateinit var tableAdapter: HistoryTableAdapter
+
+    private var showStats = true
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -9451,61 +9774,169 @@ class HistoryFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        setHasOptionsMenu(true)
 
-        // Подключаем верхнее меню через MenuProvider
-        requireActivity().addMenuProvider(object : MenuProvider {
-            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
-                menuInflater.inflate(R.menu.menu_history, menu)
-                // Блокируем кнопку, если уже идёт загрузка
-                menu.findItem(R.id.action_restore_history)?.isEnabled = !viewModel.isLoading.value
-            }
-
-            override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
-                return when (menuItem.itemId) {
-                    R.id.action_restore_history -> {
-                        // ✅ Запускаем suspend-функцию внутри корутины
-                        lifecycleScope.launch {
-                            viewModel.restoreFromServer()
-                        }
-                        true
-                    }
-                    else -> false
-                }
-            }
-        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
-
-        setupRecyclerView()
+        setupPeriodControls()
+        setupSearch()
+        setupStatsToggle()
+        setupFocusHandling()
         setupObservers()
+
+        viewModel.loadData()
     }
 
-    private fun setupRecyclerView() {
-        adapter = HistoryAdapter { record ->
-            Snackbar.make(binding.root, "Книга: ${record.bookTitle}", Snackbar.LENGTH_SHORT).show()
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.menu_history, menu)
+        super.onCreateOptionsMenu(menu, inflater)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_sync_history -> {
+                syncWithServer()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
-        binding.historyRecycler.layoutManager = LinearLayoutManager(requireContext())
-        binding.historyRecycler.adapter = adapter
+    }
+
+    private fun syncWithServer() {
+        lifecycleScope.launch {
+            val snackbar = Snackbar.make(binding.root, "Синхронизация с сервером...", Snackbar.LENGTH_INDEFINITE)
+            snackbar.show()
+
+            try {
+                val app = requireContext().applicationContext as org.readium.r2.testapp.Application
+                val result = app.syncManager.syncHistoryFromServer()
+
+                snackbar.dismiss()
+
+                result.onSuccess { data ->
+                    val message = "Синхронизация завершена: загружено ${data.books.size} книг, ${data.readingStats.size} записей"
+                    Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                    viewModel.loadData()
+                }.onFailure { error ->
+                    Snackbar.make(binding.root, "Ошибка: ${error.message}", Snackbar.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                snackbar.dismiss()
+                Snackbar.make(binding.root, "Ошибка: ${e.message}", Snackbar.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun setupPeriodControls() {
+        binding.prevMonthButton.setOnClickListener {
+            viewModel.previousMonth()
+        }
+
+        binding.nextMonthButton.setOnClickListener {
+            viewModel.nextMonth()
+        }
+
+        binding.calendarButton.setOnClickListener {
+            Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_LONG).show()
+        }
+    }
+
+    private fun setupSearch() {
+        binding.searchInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                viewModel.updateSearchQuery(s?.toString() ?: "")
+            }
+        })
+
+        binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                hideKeyboardAndClearFocus()
+                true
+            } else false
+        }
+    }
+
+    private fun setupFocusHandling() {
+        binding.root.setOnTouchListener { _, _ ->
+            hideKeyboardAndClearFocus()
+            false
+        }
+
+        binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus) {
+                hideKeyboardAndClearFocus()
+            }
+        }
+
+        binding.searchInput.setOnClickListener {
+            binding.searchInput.isCursorVisible = true
+            binding.searchInput.requestFocus()
+        }
+    }
+
+    private fun hideKeyboardAndClearFocus() {
+        val imm = requireContext().getSystemService(android.app.Activity.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(binding.searchInput.windowToken, 0)
+        binding.searchInput.clearFocus()
+        binding.searchInput.isCursorVisible = false
+    }
+
+    private fun setupStatsToggle() {
+        binding.statsToggleButton.setOnClickListener {
+            showStats = !showStats
+            updateStatsVisibility()
+
+            if (showStats) {
+                binding.statsToggleButton.text = "📊 Статистика"
+                binding.statsToggleButton.icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
+            } else {
+                binding.statsToggleButton.text = "📊 Показать статистику"
+                binding.statsToggleButton.icon = null
+            }
+        }
+    }
+
+    private fun updateStatsVisibility() {
+        viewModel.filteredTableData.value?.let { data ->
+            renderTable(data, showStats)
+        }
     }
 
     private fun setupObservers() {
         lifecycleScope.launch {
-            viewModel.historyRecords.collect { records ->
-                adapter.submitList(records)
-                if (records.isEmpty()) {
-                    binding.emptyText.visibility = View.VISIBLE
-                    binding.historyRecycler.visibility = View.GONE
-                } else {
-                    binding.emptyText.visibility = View.GONE
-                    binding.historyRecycler.visibility = View.VISIBLE
-                }
+            viewModel.periodRange.collect { range ->
+                val dateFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+                val periodText = "${range.first.format(dateFormatter)} - ${range.second.format(dateFormatter)}"
+                binding.periodTitle.text = periodText
             }
         }
+
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
                 binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
-                // Обновляем состояние кнопки в меню
-                requireActivity().invalidateOptionsMenu()
             }
         }
+
+        lifecycleScope.launch {
+            viewModel.filteredTableData.collect { data ->
+                if (data != null) {
+                    if (data.books.isEmpty()) {
+                        binding.emptyText.visibility = View.VISIBLE
+                        binding.emptyText.text = if (viewModel.searchQuery.value.isBlank()) {
+                            "Нет данных за выбранный период"
+                        } else {
+                            "Книги не найдены"
+                        }
+                        binding.tableScrollView.visibility = View.GONE
+                    } else {
+                        binding.emptyText.visibility = View.GONE
+                        binding.tableScrollView.visibility = View.VISIBLE
+                        renderTable(data, showStats)
+                    }
+                }
+            }
+        }
+
         lifecycleScope.launch {
             viewModel.errorMessage.collect { error ->
                 if (error != null) {
@@ -9516,14 +9947,23 @@ class HistoryFragment : Fragment() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        menuViewModel.setMenuVisible(false)
-    }
+    private fun renderTable(data: HistoryTableData, showStats: Boolean) {
+        if (!::tableAdapter.isInitialized) {
+            tableAdapter = HistoryTableAdapter { bookId ->
+                val intent = ReaderActivityContract().createIntent(
+                    requireContext(),
+                    ReaderActivityContract.Arguments(bookId)
+                )
+                startActivity(intent)
+            }
+        }
 
-    override fun onPause() {
-        super.onPause()
-        menuViewModel.setMenuVisible(true)
+        tableAdapter.setData(
+            data = data,
+            fixedContainer = binding.fixedColumnContainer,
+            dynamicContainer = binding.dynamicColumnsContainer,
+            showStats = showStats
+        )
     }
 
     override fun onDestroyView() {
@@ -9535,7 +9975,7 @@ class HistoryFragment : Fragment() {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/history/HistoryViewModel.kt
 ТИП: KOTLIN
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
 package org.readium.r2.testapp.history
@@ -9545,39 +9985,196 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.Application as App
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 class HistoryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as App
 
-    private val _historyRecords = MutableStateFlow<List<HistoryRecord>>(emptyList())
-    val historyRecords: StateFlow<List<HistoryRecord>> = _historyRecords
+    private val _tableData = MutableStateFlow<HistoryTableData?>(null)
+    val tableData: StateFlow<HistoryTableData?> = _tableData.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    suspend fun restoreFromServer() {
-        _isLoading.value = true
-        _errorMessage.value = null
+    private val _periodRange = MutableStateFlow<Pair<LocalDate, LocalDate>>(
+        YearMonth.now().atDay(1) to YearMonth.now().atEndOfMonth()
+    )
+    val periodRange: StateFlow<Pair<LocalDate, LocalDate>> = _periodRange.asStateFlow()
 
-        try {
-            val result = app.historySyncManager.restoreAllData()
-            if (result.isSuccess) {
-                val records = result.getOrNull() ?: emptyList()
-                _historyRecords.value = records
-            } else {
-                _errorMessage.value = result.exceptionOrNull()?.message ?: "Ошибка загрузки"
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _filteredTableData = MutableStateFlow<HistoryTableData?>(null)
+    val filteredTableData: StateFlow<HistoryTableData?> = _filteredTableData.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            combine(
+                _tableData,
+                _searchQuery.debounce(300).distinctUntilChanged()
+            ) { data, query ->
+                if (data == null) return@combine null
+                if (query.isBlank()) return@combine data
+
+                val filteredBooks = data.books.filter { book ->
+                    book.title.contains(query, ignoreCase = true)
+                }
+
+                val totalsByDate = data.dates.associateWith { date ->
+                    filteredBooks.sumOf { it.dailyProgress[date] ?: 0 }.toDouble()
+                }
+
+                val totalTimeByDate = data.dates.associateWith { date ->
+                    filteredBooks.sumOf { it.dailyTime[date] ?: 0.0 }
+                }
+
+                val totalPagesSum = totalsByDate.values.sum()
+                val totalHoursSum = totalTimeByDate.values.sum()
+
+                data.copy(
+                    books = filteredBooks,
+                    totalsByDate = totalsByDate,
+                    totalTimeByDate = totalTimeByDate,
+                    totalPagesSum = totalPagesSum,
+                    totalHoursSum = totalHoursSum
+                )
+            }.collect { filteredData ->
+                _filteredTableData.value = filteredData
             }
-        } catch (e: Exception) {
-            _errorMessage.value = e.message ?: "Неизвестная ошибка"
-        } finally {
-            _isLoading.value = false
         }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun loadData() {
+        val (startDate, endDate) = _periodRange.value
+        loadDataForRange(startDate, endDate)
+    }
+
+    fun loadDataForRange(startDate: LocalDate, endDate: LocalDate) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+
+            try {
+                _periodRange.value = startDate to endDate
+                val data = loadHistoryData(startDate, endDate)
+                _tableData.value = data
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Ошибка загрузки данных"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun previousMonth() {
+        val (startDate, _) = _periodRange.value
+        val month = YearMonth.from(startDate)
+        val previousMonth = month.minusMonths(1)
+        val newStart = previousMonth.atDay(1)
+        val newEnd = previousMonth.atEndOfMonth()
+        loadDataForRange(newStart, newEnd)
+    }
+
+    fun nextMonth() {
+        val (startDate, _) = _periodRange.value
+        val month = YearMonth.from(startDate)
+        val nextMonth = month.plusMonths(1)
+        val newStart = nextMonth.atDay(1)
+        val newEnd = nextMonth.atEndOfMonth()
+        loadDataForRange(newStart, newEnd)
+    }
+
+    fun getFormattedMonth(): String {
+        val (startDate, endDate) = _periodRange.value
+        val formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+        return "${startDate.format(formatter)} - ${endDate.format(formatter)}"
+    }
+
+    private suspend fun loadHistoryData(startDate: LocalDate, endDate: LocalDate): HistoryTableData {
+        val books = app.bookRepository.books().first()
+        val allStats = app.bookRepository.getAllReadingStats().first()
+
+        val statsInRange = allStats.filter { stat ->
+            stat.date in startDate..endDate
+        }
+
+        val statsByBook = statsInRange.groupBy { it.bookId }
+
+        val dates = mutableListOf<LocalDate>()
+        var currentDate = startDate
+        while (currentDate <= endDate) {
+            dates.add(currentDate)
+            currentDate = currentDate.plusDays(1)
+        }
+
+        val bookProgressList = books.mapNotNull { book ->
+            val bookId = book.id ?: return@mapNotNull null
+
+            val statusText = when {
+                book.pagesRead > 0 -> "В процессе"
+                else -> "В плане"
+            }
+
+            val bookStats = statsByBook[bookId] ?: emptyList()
+
+            val dailyProgress = dates.associateWith { date ->
+                bookStats.find { it.date == date }?.pagesRead ?: 0
+            }
+
+            val dailyTime = dates.associateWith { date ->
+                bookStats.find { it.date == date }?.hoursRead ?: 0.0
+            }
+
+            BookProgress(
+                bookId = bookId,
+                title = book.title ?: "Без названия",
+                author = book.author ?: "",
+                status = statusText,
+                category = "0.0",
+                dailyProgress = dailyProgress,
+                dailyTime = dailyTime
+            )
+        }.sortedBy { it.title }
+
+        val totalsByDate = dates.associateWith { date ->
+            bookProgressList.sumOf { it.dailyProgress[date] ?: 0 }.toDouble()
+        }
+
+        val totalTimeByDate = dates.associateWith { date ->
+            bookProgressList.sumOf { it.dailyTime[date] ?: 0.0 }
+        }
+
+        val totalPagesSum = totalsByDate.values.sum()
+        val totalHoursSum = totalTimeByDate.values.sum()
+
+        return HistoryTableData(
+            periodStart = startDate,
+            periodEnd = endDate,
+            dates = dates,
+            books = bookProgressList,
+            totalsByDate = totalsByDate,
+            totalTimeByDate = totalTimeByDate,
+            totalPagesSum = totalPagesSum,
+            totalHoursSum = totalHoursSum
+        )
     }
 
     fun clearError() {
@@ -11549,6 +12146,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.BuildConfig.DEBUG
+import org.readium.r2.testapp.alarm.AlarmForegroundService
 import org.readium.r2.testapp.alarm.AlarmScheduler
 import org.readium.r2.testapp.data.AlarmPreferencesDataStore
 import org.readium.r2.testapp.data.BookRepository
@@ -11558,14 +12156,13 @@ import org.readium.r2.testapp.domain.Bookshelf
 import org.readium.r2.testapp.domain.CoverStorage
 import org.readium.r2.testapp.domain.PublicationRetriever
 import org.readium.r2.testapp.reader.ReaderRepository
+import org.readium.r2.testapp.sync.HistorySyncManager
 import org.readium.r2.testapp.sync.SyncManager
 import org.readium.r2.testapp.utils.tryOrLog
 import timber.log.Timber
 import java.io.File
 import java.util.Properties
 import java.util.concurrent.Executors
-import org.readium.r2.testapp.alarm.AlarmForegroundService
-import org.readium.r2.testapp.sync.HistorySyncManager
 
 class Application : android.app.Application() {
 
@@ -11592,15 +12189,13 @@ class Application : android.app.Application() {
     lateinit var sleepRepository: SleepRepository
         private set
 
+    lateinit var historySyncManager: HistorySyncManager
+        private set
+
     private val coroutineScope: CoroutineScope = MainScope()
 
     private val Context.navigatorPreferences: DataStore<Preferences>
         by preferencesDataStore(name = "navigator-preferences")
-
-    lateinit var historySyncManager: HistorySyncManager
-        private set
-
-
 
     override fun onCreate() {
         if (DEBUG) {
@@ -11610,9 +12205,6 @@ class Application : android.app.Application() {
 
         super.onCreate()
 
-        historySyncManager = HistorySyncManager(this, this)
-
-
         DynamicColors.applyToActivitiesIfAvailable(this)
 
         readium = Readium(this)
@@ -11621,8 +12213,10 @@ class Application : android.app.Application() {
 
         val database = AppDatabase.getDatabase(this)
 
-
+        // Инициализация bookRepository ПЕРВОЙ, так как она нужна другим компонентам
         bookRepository = BookRepository(database.booksDao())
+
+        // Затем инициализация остальных репозиториев
         sleepRepository = SleepRepository(database.sleepDao())
         alarmPreferencesDataStore = AlarmPreferencesDataStore(this)
 
@@ -11653,7 +12247,10 @@ class Application : android.app.Application() {
             navigatorPreferences
         )
 
+        // Инициализация SyncManager ПОСЛЕ bookRepository
         syncManager = SyncManager(this, bookRepository)
+
+        historySyncManager = HistorySyncManager(this, this)
 
         // Восстанавливаем будильники после установки приложения
         coroutineScope.launch(Dispatchers.IO) {
@@ -11661,11 +12258,11 @@ class Application : android.app.Application() {
                 AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
             }
         }
+
         // Запускаем Foreground Service для будильника
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AlarmForegroundService.start(this)
         }
-
     }
 
     private fun computeStorageDir(): File {
@@ -11863,7 +12460,7 @@ class Converters {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/db/AppDatabase.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 4.0K
 ================================================================================
 
 package org.readium.r2.testapp.data.db
@@ -11873,8 +12470,6 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 import org.readium.r2.testapp.data.model.*
 
 @Database(
@@ -11886,7 +12481,7 @@ import org.readium.r2.testapp.data.model.*
         ReadingStat::class,
         SleepRecord::class
     ],
-    version = 6,
+    version = 8,  // Увеличиваем версию
     exportSchema = false
 )
 @TypeConverters(HighlightConverters::class, Converters::class)
@@ -11900,102 +12495,6 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE books ADD COLUMN reading_time INTEGER NOT NULL DEFAULT 0")
-                database.execSQL("ALTER TABLE books ADD COLUMN pages_read INTEGER NOT NULL DEFAULT 0")
-                database.execSQL("ALTER TABLE books ADD COLUMN last_read_date INTEGER")
-            }
-        }
-
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("""
-                    CREATE TABLE IF NOT EXISTS reading_stats (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        book_id INTEGER NOT NULL,
-                        date TEXT NOT NULL,
-                        pages_read INTEGER NOT NULL DEFAULT 0,
-                        hours_read REAL NOT NULL DEFAULT 0,
-                        FOREIGN KEY(book_id) REFERENCES books(id) ON DELETE CASCADE,
-                        UNIQUE(book_id, date)
-                    )
-                """)
-                database.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_book_id ON reading_stats(book_id)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS idx_reading_stats_date ON reading_stats(date)")
-            }
-        }
-
-        private val MIGRATION_3_4 = object : Migration(3, 4) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("""
-                    CREATE TABLE IF NOT EXISTS sleep_records (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        date TEXT NOT NULL UNIQUE,
-                        wake_time TEXT,
-                        bed_time TEXT,
-                        is_manual INTEGER NOT NULL DEFAULT 0,
-                        synced INTEGER NOT NULL DEFAULT 0,
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL
-                    )
-                """)
-                database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_date ON sleep_records(date)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_synced ON sleep_records(synced)")
-            }
-        }
-
-        private val MIGRATION_4_5 = object : Migration(4, 5) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE sleep_records RENAME TO sleep_records_old")
-                database.execSQL("""
-                    CREATE TABLE sleep_records (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        date TEXT NOT NULL UNIQUE,
-                        wake_time TEXT,
-                        bed_time TEXT,
-                        is_manual INTEGER NOT NULL DEFAULT 0,
-                        synced INTEGER NOT NULL DEFAULT 0,
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL
-                    )
-                """)
-                database.execSQL("""
-                    INSERT INTO sleep_records (id, date, wake_time, bed_time, is_manual, synced, created_at, updated_at)
-                    SELECT id, date, wake_time, bed_time, 
-                           COALESCE(is_manual, 0) as is_manual,
-                           COALESCE(synced, 0) as synced,
-                           created_at, updated_at
-                    FROM sleep_records_old
-                """)
-                database.execSQL("DROP TABLE sleep_records_old")
-                database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_date ON sleep_records(date)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS idx_sleep_records_synced ON sleep_records(synced)")
-            }
-        }
-
-        private val MIGRATION_5_6 = object : Migration(5, 6) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("DROP INDEX IF EXISTS idx_sleep_records_date")
-                database.execSQL("DROP INDEX IF EXISTS idx_sleep_records_synced")
-                database.execSQL("DROP TABLE IF EXISTS sleep_records")
-                database.execSQL("""
-                    CREATE TABLE sleep_records (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                        date TEXT NOT NULL UNIQUE,
-                        wake_time TEXT,
-                        bed_time TEXT,
-                        is_manual INTEGER NOT NULL,
-                        synced INTEGER NOT NULL,
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL
-                    )
-                """)
-                database.execSQL("CREATE INDEX idx_sleep_records_date ON sleep_records(date)")
-                database.execSQL("CREATE INDEX idx_sleep_records_synced ON sleep_records(synced)")
-            }
-        }
-
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -12003,7 +12502,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .fallbackToDestructiveMigration()  // При конфликте — пересоздаёт БД
                     .build()
                 INSTANCE = instance
                 instance
@@ -12043,7 +12542,7 @@ interface BooksDao {
     @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IDENTIFIER + " = :identifier")
     suspend fun getBookByIdentifier(identifier: String): Book?
 
-    @Query("SELECT * FROM " + Book.TABLE_NAME + " ORDER BY " + Book.CREATION_DATE + " desc")
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 ORDER BY " + Book.CREATION_DATE + " desc")
     fun getAllBooks(): Flow<List<Book>>
 
     @Update
@@ -12106,15 +12605,21 @@ interface BooksDao {
     @Query("DELETE FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.ID} = :id")
     suspend fun deleteHighlight(id: Long)
 
-    // Методы для работы со статистикой чтения - используем String для даты
+    // Методы для работы со статистикой чтения
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId ORDER BY date ASC")
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>>
+
+
+
+    @Query("SELECT * FROM reading_stats ORDER BY date ASC")
+    fun getAllReadingStats(): Flow<List<ReadingStat>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReadingStat(stat: ReadingStat)
 
+
     @Query("DELETE FROM reading_stats WHERE book_id = :bookId AND date = :date")
-    suspend fun deleteReadingStat(bookId: Long, date: String) // Используем String вместо LocalDate
+    suspend fun deleteReadingStat(bookId: Long, date: String)
 
     @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalPagesRead(bookId: Long): Int?
@@ -12130,8 +12635,6 @@ interface BooksDao {
 
     @Query("UPDATE books SET pages_read = :pages WHERE id = :bookId")
     suspend fun updateBookPages(bookId: Long, pages: Int)
-
-    // Добавьте эти методы в интерфейс BooksDao
 
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId AND date = :date")
     suspend fun getReadingStatByDate(bookId: Long, date: String): ReadingStat?
@@ -12150,8 +12653,42 @@ interface BooksDao {
         hoursToAdd: Double,
         pagesToAdd: Int,
     )
-}
 
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ И ВОССТАНОВЛЕНИЯ =====
+
+    @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.IS_DELETED + " = 1 WHERE " + Book.ID + " = :id")
+    suspend fun softDeleteBook(id: Long)
+
+    @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.IS_DELETED + " = 0 WHERE " + Book.ID + " = :id")
+    suspend fun restoreBook(id: Long)
+
+    @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.HAS_FILE + " = :hasFile WHERE " + Book.ID + " = :id")
+    suspend fun updateHasFile(id: Long, hasFile: Boolean)
+
+    @Query(
+        "UPDATE " + Book.TABLE_NAME +
+            " SET " + Book.READING_TIME + " = :readingTime, " +
+            Book.PAGES_READ + " = :pagesRead, " +
+            Book.CURRENT_PAGE + " = :currentPage, " +
+            Book.PROGRESSION + " = :locator, " +
+            Book.LAST_READ_DATE + " = :lastReadDate " +
+            " WHERE " + Book.ID + " = :id"
+    )
+    suspend fun updateReadingProgress(
+        id: Long,
+        readingTime: Long,
+        pagesRead: Int,
+        currentPage: Int,
+        locator: String,
+        lastReadDate: Long
+    )
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier")
+    suspend fun getBookByServerIdentifier(serverIdentifier: String): Book?
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 OR " + Book.HAS_FILE + " = 0")
+    suspend fun getAllBooksForSync(): List<Book>
+}
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/db/CatalogDao.kt
@@ -12317,6 +12854,8 @@ import timber.log.Timber
 class BookRepository(
     private val booksDao: BooksDao,
 ) {
+    // ===== ОСНОВНЫЕ МЕТОДЫ =====
+
     fun books(): Flow<List<Book>> = booksDao.getAllBooks()
 
     suspend fun get(id: Long) = booksDao.get(id)
@@ -12353,106 +12892,8 @@ class BookRepository(
         booksDao.updateBookReadingTime(bookId, seconds)
     }
 
-    // ===== МЕТОДЫ ДЛЯ РАБОТЫ СО СТАТИСТИКОЙ ПО ДАТАМ =====
-
-    /**
-     * Сохраняет время чтения за текущую дату
-     */
-    suspend fun addReadingTime(bookId: Long, seconds: Long) {
-        val today = LocalDate.now()
-        val hoursToAdd = seconds / 3600.0
-
-        Timber.d("addReadingTime: bookId=$bookId, seconds=$seconds, hoursToAdd=$hoursToAdd, date=$today")
-
-        val existingStat = booksDao.getReadingStatByDate(bookId, today.toString())
-
-        if (existingStat == null) {
-            // Создаем новую запись
-            val readingStat = ReadingStat(
-                bookId = bookId,
-                date = today,
-                pagesRead = 0,
-                hoursRead = hoursToAdd
-            )
-            booksDao.insertReadingStat(readingStat)
-            Timber.d("Created new reading stat for $today: $hoursToAdd hours")
-        } else {
-            // Обновляем существующую
-            booksDao.addReadingTimeToDate(bookId, today.toString(), hoursToAdd, 0)
-            Timber.d("Updated existing reading stat for $today: +$hoursToAdd hours (was ${existingStat.hoursRead})")
-        }
-
-        // Обновляем общее время на обложке (сумма за все дни)
-        updateTotalReadingTime(bookId)
-    }
-
-    /**
-     * Обновляет общее время на обложке (сумма за все дни)
-     */
-    private suspend fun updateTotalReadingTime(bookId: Long) {
-        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
-        val totalSeconds = (totalHours * 3600).toLong().coerceAtLeast(0)
-        booksDao.updateBookReadingTime(bookId, totalSeconds)
-        Timber.d("Total reading time updated: $totalSeconds seconds ($totalHours hours)")
-    }
-
-    /**
-     * Получает общее время чтения для обложки
-     */
-    suspend fun getTotalReadingTime(bookId: Long): Long {
-        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
-        return (totalHours * 3600).toLong()
-    }
-
-    // ===== СУЩЕСТВУЮЩИЕ МЕТОДЫ =====
-
-    suspend fun insertBookmark(bookId: Long, publication: Publication, locator: Locator): Long {
-        val resource = publication.readingOrder.indexOfFirstWithHref(locator.href)!!
-        val bookmark = Bookmark(
-            creation = DateTime().toDate().time,
-            bookId = bookId,
-            resourceIndex = resource.toLong(),
-            resourceHref = locator.href.toString(),
-            resourceType = locator.mediaType.toString(),
-            resourceTitle = locator.title.orEmpty(),
-            location = locator.locations.toJSON().toString(),
-            locatorText = Locator.Text().toJSON().toString()
-        )
-        return booksDao.insertBookmark(bookmark)
-    }
-
-    fun bookmarksForBook(bookId: Long): Flow<List<Bookmark>> =
-        booksDao.getBookmarksForBook(bookId)
-
-    suspend fun deleteBookmark(bookmarkId: Long) = booksDao.deleteBookmark(bookmarkId)
-
-    suspend fun highlightById(id: Long): Highlight? =
-        booksDao.getHighlightById(id)
-
     suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?) {
         booksDao.updateBookTitleAndAuthor(bookId, title, author)
-    }
-
-    fun highlightsForBook(bookId: Long): Flow<List<Highlight>> =
-        booksDao.getHighlightsForBook(bookId)
-
-    suspend fun addHighlight(
-        bookId: Long,
-        style: Highlight.Style,
-        @ColorInt tint: Int,
-        locator: Locator,
-        annotation: String,
-    ): Long =
-        booksDao.insertHighlight(Highlight(bookId, style, tint, locator, annotation))
-
-    suspend fun deleteHighlight(id: Long) = booksDao.deleteHighlight(id)
-
-    suspend fun updateHighlightAnnotation(id: Long, annotation: String) {
-        booksDao.updateHighlightAnnotation(id, annotation)
-    }
-
-    suspend fun updateHighlightStyle(id: Long, style: Highlight.Style, @ColorInt tint: Int) {
-        booksDao.updateHighlightStyle(id, style, tint)
     }
 
     suspend fun insertBook(
@@ -12472,32 +12913,149 @@ class BookRepository(
             cover = cover.path,
             readingTime = 0,
             pagesRead = 0,
-            lastReadDate = null
+            currentPage = 0,
+            totalPages = 0,
+            lastReadDate = null,
+            serverIdentifier = publication.metadata.identifier
         )
         return booksDao.insertBook(book)
     }
 
+    suspend fun deleteBook(id: Long) = booksDao.deleteBook(id)
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ =====
+
+    suspend fun softDeleteBook(bookId: Long) = booksDao.softDeleteBook(bookId)
+
+    suspend fun restoreBook(bookId: Long) = booksDao.restoreBook(bookId)
+
+    suspend fun updateHasFile(bookId: Long, hasFile: Boolean) = booksDao.updateHasFile(bookId, hasFile)
+
+    suspend fun updateReadingProgress(
+        bookId: Long,
+        readingTime: Long,
+        pagesRead: Int,
+        currentPage: Int,
+        locator: Locator,
+        totalPages: Int? = null
+    ) {
+        val finalCurrentPage = if (totalPages != null && currentPage >= totalPages && totalPages > 0) {
+            0
+        } else {
+            currentPage
+        }
+
+        booksDao.updateReadingProgress(
+            id = bookId,
+            readingTime = readingTime,
+            pagesRead = pagesRead,
+            currentPage = finalCurrentPage,
+            locator = locator.toJSON().toString(),
+            lastReadDate = System.currentTimeMillis()
+        )
+    }
+
+    suspend fun getBookByServerIdentifier(serverIdentifier: String): Book? =
+        booksDao.getBookByServerIdentifier(serverIdentifier)
+
+    // ===== МЕТОДЫ ДЛЯ СТАТИСТИКИ =====
+
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>> =
         booksDao.getReadingStatsForBook(bookId)
 
-    suspend fun saveReadingStat(stat: ReadingStat) {
-        booksDao.insertReadingStat(stat)
+    fun getAllReadingStats(): Flow<List<ReadingStat>> = booksDao.getAllReadingStats()
+
+    suspend fun saveReadingStat(bookId: Long, date: LocalDate, pagesRead: Int, hoursRead: Double) {
+        val readingStat = ReadingStat(
+            bookId = bookId,
+            date = date,
+            pagesRead = pagesRead,
+            hoursRead = hoursRead
+        )
+        booksDao.insertReadingStat(readingStat)
     }
 
     suspend fun deleteReadingStat(bookId: Long, date: LocalDate) {
         booksDao.deleteReadingStat(bookId, date.toString())
     }
 
-    suspend fun getTotalPagesRead(bookId: Long): Int =
-        booksDao.getTotalPagesRead(bookId) ?: 0
+    suspend fun insertBookWithoutFile(book: Book): Long {
+        return booksDao.insertBook(book)
+    }
 
-    suspend fun getTotalHoursRead(bookId: Long): Double =
-        booksDao.getTotalHoursRead(bookId) ?: 0.0
+    suspend fun getTotalPagesRead(bookId: Long): Int = booksDao.getTotalPagesRead(bookId) ?: 0
 
-    suspend fun deleteBook(id: Long) =
-        booksDao.deleteBook(id)
+    suspend fun getTotalHoursRead(bookId: Long): Double = booksDao.getTotalHoursRead(bookId) ?: 0.0
+
+    suspend fun addReadingTime(bookId: Long, seconds: Long) {
+        val today = LocalDate.now()
+        val hoursToAdd = seconds / 3600.0
+        val existingStat = booksDao.getReadingStatByDate(bookId, today.toString())
+        if (existingStat == null) {
+            val readingStat = ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = 0,
+                hoursRead = hoursToAdd
+            )
+            booksDao.insertReadingStat(readingStat)
+        } else {
+            booksDao.addReadingTimeToDate(bookId, today.toString(), hoursToAdd, 0)
+        }
+        updateTotalReadingTime(bookId)
+    }
+
+    private suspend fun updateTotalReadingTime(bookId: Long) {
+        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
+        val totalSeconds = (totalHours * 3600).toLong().coerceAtLeast(0)
+        booksDao.updateBookReadingTime(bookId, totalSeconds)
+    }
+
+    // ===== МЕТОДЫ ДЛЯ ЗАКЛАДОК =====
+
+    fun bookmarksForBook(bookId: Long): Flow<List<Bookmark>> =
+        booksDao.getBookmarksForBook(bookId)
+
+    suspend fun insertBookmark(bookId: Long, publication: Publication, locator: Locator): Long {
+        val resource = publication.readingOrder.indexOfFirstWithHref(locator.href)!!
+        val bookmark = Bookmark(
+            creation = DateTime().toDate().time,
+            bookId = bookId,
+            resourceIndex = resource.toLong(),
+            resourceHref = locator.href.toString(),
+            resourceType = locator.mediaType.toString(),
+            resourceTitle = locator.title.orEmpty(),
+            location = locator.locations.toJSON().toString(),
+            locatorText = Locator.Text().toJSON().toString()
+        )
+        return booksDao.insertBookmark(bookmark)
+    }
+
+    suspend fun deleteBookmark(bookmarkId: Long) = booksDao.deleteBookmark(bookmarkId)
+
+    // ===== МЕТОДЫ ДЛЯ ВЫДЕЛЕНИЙ =====
+
+    fun highlightsForBook(bookId: Long): Flow<List<Highlight>> =
+        booksDao.getHighlightsForBook(bookId)
+
+    suspend fun highlightById(id: Long): Highlight? = booksDao.getHighlightById(id)
+
+    suspend fun addHighlight(
+        bookId: Long,
+        style: Highlight.Style,
+        @ColorInt tint: Int,
+        locator: Locator,
+        annotation: String,
+    ): Long = booksDao.insertHighlight(Highlight(bookId, style, tint, locator, annotation))
+
+    suspend fun updateHighlightAnnotation(id: Long, annotation: String) =
+        booksDao.updateHighlightAnnotation(id, annotation)
+
+    suspend fun updateHighlightStyle(id: Long, style: Highlight.Style, @ColorInt tint: Int) =
+        booksDao.updateHighlightStyle(id, style, tint)
+
+    suspend fun deleteHighlight(id: Long) = booksDao.deleteHighlight(id)
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/model/Module.kt
@@ -12638,15 +13196,14 @@ data class ReadingStat(
     val bookId: Long,
 
     @ColumnInfo(name = "date")
-    val date: LocalDate, // LocalDate будет автоматически конвертироваться через TypeConverter
+    val date: LocalDate,
 
     @ColumnInfo(name = "pages_read", defaultValue = "0")
     val pagesRead: Int = 0,
 
     @ColumnInfo(name = "hours_read", defaultValue = "0")
-    val hoursRead: Double = 0.0,
+    val hoursRead: Double = 0.0
 )
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/model/Bookmark.kt
@@ -12972,29 +13529,61 @@ data class Book(
     @PrimaryKey
     @ColumnInfo(name = ID)
     var id: Long? = null,
-    @ColumnInfo(name = Bookmark.CREATION_DATE, defaultValue = "CURRENT_TIMESTAMP")
+
+    @ColumnInfo(name = CREATION_DATE, defaultValue = "CURRENT_TIMESTAMP")
     val creation: Long? = null,
+
     @ColumnInfo(name = HREF)
     val href: String,
+
     @ColumnInfo(name = TITLE)
     val title: String?,
+
     @ColumnInfo(name = AUTHOR)
     val author: String? = null,
+
     @ColumnInfo(name = IDENTIFIER)
     val identifier: String? = null,
+
     @ColumnInfo(name = PROGRESSION)
     val progression: String? = null,
+
     @ColumnInfo(name = MEDIA_TYPE)
     val rawMediaType: String,
+
     @ColumnInfo(name = COVER)
     val cover: String,
+
     @ColumnInfo(name = READING_TIME, defaultValue = "0")
     var readingTime: Long = 0,
+
     @ColumnInfo(name = PAGES_READ, defaultValue = "0")
     var pagesRead: Int = 0,
+
+    @ColumnInfo(name = CURRENT_PAGE, defaultValue = "0")
+    var currentPage: Int = 0,
+
+    @ColumnInfo(name = TOTAL_PAGES, defaultValue = "0")
+    var totalPages: Int = 0,
+
     @ColumnInfo(name = LAST_READ_DATE)
     var lastReadDate: Long? = null,
+
+    // НОВЫЕ ПОЛЯ
+    @ColumnInfo(name = IS_DELETED, defaultValue = "0")
+    var isDeleted: Boolean = false,
+
+    @ColumnInfo(name = HAS_FILE, defaultValue = "1")
+    var hasFile: Boolean = true,
+
+    @ColumnInfo(name = LAST_SYNCED, defaultValue = "0")
+    var lastSynced: Long = 0,
+
+    @ColumnInfo(name = SERVER_IDENTIFIER)
+    var serverIdentifier: String? = null
+
 ) : Serializable {
+
     constructor(
         id: Long? = null,
         creation: Long? = null,
@@ -13007,7 +13596,13 @@ data class Book(
         cover: String,
         readingTime: Long = 0,
         pagesRead: Int = 0,
+        currentPage: Int = 0,
+        totalPages: Int = 0,
         lastReadDate: Long? = null,
+        isDeleted: Boolean = false,
+        hasFile: Boolean = true,
+        lastSynced: Long = 0,
+        serverIdentifier: String? = null
     ) : this(
         id = id,
         creation = creation,
@@ -13020,11 +13615,16 @@ data class Book(
         cover = cover,
         readingTime = readingTime,
         pagesRead = pagesRead,
-        lastReadDate = lastReadDate
+        currentPage = currentPage,
+        totalPages = totalPages,
+        lastReadDate = lastReadDate,
+        isDeleted = isDeleted,
+        hasFile = hasFile,
+        lastSynced = lastSynced,
+        serverIdentifier = serverIdentifier
     )
 
     val url: AbsoluteUrl get() = AbsoluteUrl(href)!!
-
     val mediaType: MediaType get() = MediaType(rawMediaType)!!
 
     companion object {
@@ -13040,10 +13640,15 @@ data class Book(
         const val COVER = "cover"
         const val READING_TIME = "reading_time"
         const val PAGES_READ = "pages_read"
+        const val CURRENT_PAGE = "current_page"
+        const val TOTAL_PAGES = "total_pages"
         const val LAST_READ_DATE = "last_read_date"
+        const val IS_DELETED = "is_deleted"
+        const val HAS_FILE = "has_file"
+        const val LAST_SYNCED = "last_synced"
+        const val SERVER_IDENTIFIER = "server_identifier"
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/SleepRepository.kt
@@ -13211,6 +13816,51 @@ class SleepRepository(
         }
     }
 }
+
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/sync/ServerBook.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
+
+package org.readium.r2.testapp.sync
+
+import com.google.gson.annotations.SerializedName
+
+data class ServerBook(
+    @SerializedName("serverIdentifier")
+    val serverIdentifier: String,
+
+    @SerializedName("identifier")
+    val identifier: String?,
+
+    @SerializedName("title")
+    val title: String,
+
+    @SerializedName("author")
+    val author: String?,
+
+    @SerializedName("totalPages")
+    val totalPages: Int?,
+
+    @SerializedName("currentPage")
+    val currentPage: Int,
+
+    @SerializedName("pagesRead")
+    val pagesRead: Int,
+
+    @SerializedName("readingTime")
+    val readingTime: Long,
+
+    @SerializedName("status")
+    val status: String,
+
+    @SerializedName("lastReadDate")
+    val lastReadDate: Long?,
+
+    @SerializedName("isDeleted")
+    val isDeleted: Boolean = false
+)
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/sync/HistorySyncDTO.kt
@@ -13427,30 +14077,30 @@ data class SyncBookDTO(
     val title: String,
 
     @SerializedName("author")
-    val author: String? = null,
+    val author: String?,
 
     @SerializedName("totalPages")
-    val totalPages: Int? = null,
+    val totalPages: Int?,
 
     @SerializedName("language")
-    val language: String? = null,
+    val language: String?,
 
     @SerializedName("categoryId")
-    val categoryId: Long? = null,
+    val categoryId: Long?,
 
     @SerializedName("readingStats")
-    val readingStats: List<SyncReadingStatDTO> = emptyList(),
+    val readingStats: List<SyncReadingStatDTO>
 )
 
 data class SyncReadingStatDTO(
     @SerializedName("date")
-    val date: String, // Используем String для даты в формате ISO
+    val date: String,
 
     @SerializedName("pagesRead")
     val pagesRead: Int,
 
     @SerializedName("hoursRead")
-    val hoursRead: Double,
+    val hoursRead: Double
 )
 
 data class SyncRequestDTO(
@@ -13458,7 +14108,7 @@ data class SyncRequestDTO(
     val username: String,
 
     @SerializedName("books")
-    val books: List<SyncBookDTO>,
+    val books: List<SyncBookDTO>
 )
 
 data class SyncResponseDTO(
@@ -13481,14 +14131,13 @@ data class SyncResponseDTO(
     val message: String,
 
     @SerializedName("error")
-    val error: String? = null,
+    val error: String?
 )
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/sync/SyncManager.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 12K
 ================================================================================
 
 package org.readium.r2.testapp.sync
@@ -13497,17 +14146,19 @@ import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Book
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
+import java.time.LocalDate
+import java.util.concurrent.TimeUnit
 
 interface SyncApi {
     @POST("/api/sync")
@@ -13515,6 +14166,9 @@ interface SyncApi {
 
     @GET("/api/sync/test")
     suspend fun testConnection(): Map<String, String>
+
+    @POST("/api/sync/history")
+    suspend fun syncHistory(@Body request: SyncHistoryRequest): SyncHistoryResponse
 }
 
 class SyncManager(
@@ -13525,11 +14179,11 @@ class SyncManager(
         private const val TAG = "SyncManager"
         private const val BASE_URL = "https://my-pkms.ru"
         private const val CONNECTION_TIMEOUT = 30L
+        private const val PREFS_NAME = "sync_prefs"
+        private const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
     }
 
-    private val gson: Gson = GsonBuilder()
-        .setPrettyPrinting()
-        .create()
+    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 
     private val api: SyncApi by lazy {
         val loggingInterceptor = HttpLoggingInterceptor { message ->
@@ -13554,24 +14208,122 @@ class SyncManager(
         retrofit.create(SyncApi::class.java)
     }
 
-    suspend fun testConnection(): Result<Map<String, String>> = withContext(Dispatchers.IO) {
+    private fun getLastSyncTimestamp(): Long {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(KEY_LAST_SYNC_TIMESTAMP, 0)
+    }
+
+    private fun saveLastSyncTimestamp(timestamp: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, timestamp).apply()
+    }
+
+    suspend fun syncHistoryFromServer(username: String = "test"): Result<SyncHistoryData> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Testing connection to $BASE_URL")
-            val response = api.testConnection()
-            Log.d(TAG, "Connection test successful: $response")
-            Result.success(response)
+            Log.d(TAG, "Starting history sync for user: $username")
+
+            val lastSync = getLastSyncTimestamp()
+            val request = SyncHistoryRequest(username, if (lastSync > 0) lastSync else null)
+
+            val response = api.syncHistory(request)
+
+            if (!response.success || response.data == null) {
+                return@withContext Result.failure(Exception("Server returned error or no data"))
+            }
+
+            val data = response.data
+
+            data.books.forEach { serverBook ->
+                saveBookFromServer(serverBook)
+            }
+
+            data.readingStats.forEach { serverStat ->
+                saveReadingStatFromServer(serverStat)
+            }
+
+            saveLastSyncTimestamp(data.lastSyncTimestamp)
+
+            Log.d(TAG, "History sync completed: ${data.books.size} books, ${data.readingStats.size} stats")
+            Result.success(data)
+
         } catch (e: Exception) {
-            Log.e(TAG, "Connection test failed", e)
+            Log.e(TAG, "History sync failed", e)
             Result.failure(e)
         }
+    }
+
+    private suspend fun saveBookFromServer(serverBook: SyncBookHistory) {
+        val existingBook = bookRepository.getBookByServerIdentifier(serverBook.serverId)
+
+        if (existingBook != null) {
+            val bookId = existingBook.id
+            if (bookId != null) {
+                val updatedBook = existingBook.copy(
+                    title = serverBook.title,
+                    author = serverBook.author,
+                    totalPages = serverBook.totalPages ?: existingBook.totalPages,
+                    currentPage = serverBook.currentPage,
+                    pagesRead = serverBook.currentPage,
+                    readingTime = serverBook.readingTime,
+                    lastReadDate = serverBook.lastReadDate,
+                    lastSynced = System.currentTimeMillis(),
+                    isDeleted = false
+                )
+                bookRepository.updateBook(updatedBook)
+                Log.d(TAG, "Updated book: ${serverBook.title}")
+            } else {
+                Log.w(TAG, "Book has null id: ${serverBook.serverId}")
+            }
+        } else {
+            // Используем конструктор Book без MediaType объекта
+            val newBook = Book(
+                id = null,
+                creation = System.currentTimeMillis(),
+                href = "",
+                title = serverBook.title,
+                author = serverBook.author,
+                identifier = serverBook.serverId,
+                progression = null,
+                rawMediaType = "application/epub+zip",  //直接用 строку
+                cover = "",
+                readingTime = serverBook.readingTime,
+                pagesRead = serverBook.currentPage,
+                currentPage = serverBook.currentPage,
+                totalPages = serverBook.totalPages ?: 0,
+                lastReadDate = serverBook.lastReadDate,
+                isDeleted = false,
+                hasFile = false,
+                lastSynced = System.currentTimeMillis(),
+                serverIdentifier = serverBook.serverId
+            )
+            bookRepository.insertBookWithoutFile(newBook)
+            Log.d(TAG, "Created new book record: ${serverBook.title}")
+        }
+    }
+
+    private suspend fun saveReadingStatFromServer(serverStat: SyncReadingStatHistory) {
+        val book = bookRepository.getBookByServerIdentifier(serverStat.bookServerId)
+        val bookId = book?.id
+        if (bookId == null) {
+            Log.w(TAG, "Book not found for stat: ${serverStat.bookServerId}")
+            return
+        }
+
+        val date = try {
+            LocalDate.parse(serverStat.date)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse date: ${serverStat.date}")
+            return
+        }
+
+        bookRepository.saveReadingStat(bookId, date, serverStat.pagesRead, serverStat.hoursRead)
+        Log.d(TAG, "Saved reading stat for ${serverStat.bookServerId} on $date: ${serverStat.pagesRead} pages")
     }
 
     suspend fun syncAllBooks(username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting sync for user: $username")
-
             val books = bookRepository.books().first()
-            Log.d(TAG, "Found ${books.size} books to sync")
 
             if (books.isEmpty()) {
                 return@withContext Result.success(
@@ -13587,47 +14339,35 @@ class SyncManager(
                 )
             }
 
-            val syncBooks = mutableListOf<SyncBookDTO>()
-
-            for (book in books) {
+            val syncBooks = books.mapNotNull { book ->
                 try {
-                    val stats = bookRepository.getReadingStatsForBook(book.id!!).first()
-
-                    val syncBook = SyncBookDTO(
+                    val bookId = book.id
+                    if (bookId == null) return@mapNotNull null
+                    val stats = bookRepository.getReadingStatsForBook(bookId).first()
+                    SyncBookDTO(
                         identifier = book.identifier ?: generateBookIdentifier(book),
                         title = book.title ?: "",
                         author = book.author ?: "",
-                        totalPages = null,
+                        totalPages = book.totalPages,
                         language = null,
                         categoryId = null,
                         readingStats = stats.map { stat ->
                             SyncReadingStatDTO(
-                                date = stat.date.toString(), // Преобразуем LocalDate в строку
+                                date = stat.date.toString(),
                                 pagesRead = stat.pagesRead,
                                 hoursRead = stat.hoursRead
                             )
                         }
                     )
-
-                    syncBooks.add(syncBook)
-                    Log.d(TAG, "Prepared book: ${book.title} with ${stats.size} stats records")
-
-                    // Логируем отправляемые данные для отладки
-                    val bookJson = gson.toJson(syncBook)
-                    Log.d(TAG, "Book JSON: $bookJson")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error preparing book ${book.title}", e)
+                    null
                 }
             }
 
             val request = SyncRequestDTO(username, syncBooks)
-            val requestJson = gson.toJson(request)
-            Log.d(TAG, "Sending sync request with ${syncBooks.size} books")
-            Log.d(TAG, "Request JSON: $requestJson")
-
             val response = api.syncData(request)
-            Log.d(TAG, "Sync response: ${gson.toJson(response)}")
-
+            Log.d(TAG, "Sync response success: ${response.success}")
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
@@ -13635,50 +14375,75 @@ class SyncManager(
         }
     }
 
-    suspend fun syncBook(bookId: Long, username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
-        try {
-            val book = bookRepository.get(bookId)
-            if (book == null) {
-                return@withContext Result.failure(Exception("Book not found"))
-            }
-
-            val stats = bookRepository.getReadingStatsForBook(bookId).first()
-
-            val syncBook = SyncBookDTO(
-                identifier = book.identifier ?: generateBookIdentifier(book),
-                title = book.title ?: "",
-                author = book.author ?: "",
-                totalPages = null,
-                language = null,
-                categoryId = null,
-                readingStats = stats.map { stat ->
-                    SyncReadingStatDTO(
-                        date = stat.date.toString(),
-                        pagesRead = stat.pagesRead,
-                        hoursRead = stat.hoursRead
-                    )
-                }
-            )
-
-            val request = SyncRequestDTO(username, listOf(syncBook))
-            val response = api.syncData(request)
-
-            Result.success(response)
-        } catch (e: Exception) {
-            Log.e(TAG, "Sync book failed", e)
-            Result.failure(e)
-        }
-    }
-
     private fun generateBookIdentifier(book: Book): String {
         val title = book.title ?: ""
         val author = book.author ?: ""
-        val identifier = "${title}_${author}_${book.href.hashCode()}".hashCode().toString()
-        Log.d(TAG, "Generated identifier for '${book.title}': $identifier")
-        return identifier
+        return "${title}_${author}_${book.href.hashCode()}".hashCode().toString()
     }
 }
 
+================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/sync/SyncHistoryDTO.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
+
+package org.readium.r2.testapp.sync
+
+import com.google.gson.annotations.SerializedName
+
+data class SyncHistoryRequest(
+    @SerializedName("username")
+    val username: String,
+    @SerializedName("lastSyncTimestamp")
+    val lastSyncTimestamp: Long? = null
+)
+
+data class SyncHistoryResponse(
+    @SerializedName("success")
+    val success: Boolean,
+    @SerializedName("data")
+    val data: SyncHistoryData?
+)
+
+data class SyncHistoryData(
+    @SerializedName("books")
+    val books: List<SyncBookHistory>,
+    @SerializedName("readingStats")
+    val readingStats: List<SyncReadingStatHistory>,
+    @SerializedName("lastSyncTimestamp")
+    val lastSyncTimestamp: Long
+)
+
+data class SyncBookHistory(
+    @SerializedName("serverId")
+    val serverId: String,
+    @SerializedName("title")
+    val title: String,
+    @SerializedName("author")
+    val author: String?,
+    @SerializedName("totalPages")
+    val totalPages: Int?,
+    @SerializedName("currentPage")
+    val currentPage: Int,
+    @SerializedName("readingTime")
+    val readingTime: Long,
+    @SerializedName("status")
+    val status: String,
+    @SerializedName("lastReadDate")
+    val lastReadDate: Long?
+)
+
+data class SyncReadingStatHistory(
+    @SerializedName("bookServerId")
+    val bookServerId: String,
+    @SerializedName("date")
+    val date: String,
+    @SerializedName("pagesRead")
+    val pagesRead: Int,
+    @SerializedName("hoursRead")
+    val hoursRead: Double
+)
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/domain/CoverStorage.kt
@@ -14316,8 +15081,6 @@ class Bookshelf(
                 coverFile.delete()
                 return Try.failure(ImportError.Database(DebugError("Could not insert book into database.")))
             }
-
-            // TODO: Восстановление прогресса из restored_books будет добавлено позже
         }
             .onFailure {
                 return Try.failure(ImportError.Publication(PublicationError(it)))
@@ -14332,9 +15095,15 @@ class Bookshelf(
 
     suspend fun deleteBook(book: Book) {
         val id = book.id!!
-        bookRepository.deleteBook(id)
+        // Мягкое удаление - только флаг, НЕ удаляем статистику
+        bookRepository.softDeleteBook(id)
+        bookRepository.updateHasFile(id, false)
+
+        // Файлы удаляем, но статистика остаётся в БД
         tryOrLog { book.url.toFile()?.delete() }
         tryOrLog { File(book.cover).delete() }
+
+        Timber.d("Book soft deleted (statistics preserved): $id, title=${book.title}")
     }
 }
 
@@ -16252,6 +17021,7 @@ useExternalFileDir=false
 
 
 
+
 </menu>
 
 ================================================================================
@@ -16264,12 +17034,27 @@ useExternalFileDir=false
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
-        android:id="@+id/action_restore_history"
-        android:title="Загрузить с сервера"
-        android:icon="@drawable/ic_baseline_file_download_24"
-        android:contentDescription="Загрузить историю с сервера"
+        android:id="@+id/action_sync_history"
+        android:title="Синхронизация"
+        android:icon="@drawable/ic_baseline_sync_24"
         app:showAsAction="always" />
 </menu>
+
+================================================================================
+ФАЙЛ: src/main/res/values/colors.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_500">#6200EE</color>
+    <color name="purple_700">#3700B3</color>
+    <color name="teal_200">#03DAC5</color>
+    <color name="teal_700">#018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
 
 ================================================================================
 ФАЙЛ: src/main/res/values/arrays.xml
@@ -16741,6 +17526,22 @@ useExternalFileDir=false
       android:pathData="M12,5L12,1L7,6l5,5L12,7c3.31,0 6,2.69 6,6s-2.69,6 -6,6 -6,-2.69 -6,-6L4,13c0,4.42 3.58,8 8,8s8,-3.58 8,-8 -3.58,-8 -8,-8zM9.56,13.49h0.45c0.21,0 0.37,-0.05 0.48,-0.16s0.16,-0.25 0.16,-0.43c0,-0.08 -0.01,-0.15 -0.04,-0.22s-0.06,-0.12 -0.11,-0.17 -0.11,-0.09 -0.18,-0.11 -0.16,-0.04 -0.25,-0.04c-0.08,0 -0.15,0.01 -0.22,0.03s-0.13,0.05 -0.18,0.1 -0.09,0.09 -0.12,0.15 -0.05,0.13 -0.05,0.2h-0.85c0,-0.18 0.04,-0.34 0.11,-0.48s0.17,-0.27 0.3,-0.37 0.27,-0.18 0.44,-0.23 0.35,-0.08 0.54,-0.08c0.21,0 0.41,0.03 0.59,0.08s0.33,0.13 0.46,0.23 0.23,0.23 0.3,0.38 0.11,0.33 0.11,0.53c0,0.09 -0.01,0.18 -0.04,0.27s-0.07,0.17 -0.13,0.25 -0.12,0.15 -0.2,0.22 -0.17,0.12 -0.28,0.17c0.24,0.09 0.42,0.21 0.54,0.39s0.18,0.38 0.18,0.61c0,0.2 -0.04,0.38 -0.12,0.53s-0.18,0.29 -0.32,0.39 -0.29,0.19 -0.48,0.24 -0.38,0.08 -0.6,0.08c-0.18,0 -0.36,-0.02 -0.53,-0.07s-0.33,-0.12 -0.46,-0.23 -0.25,-0.23 -0.33,-0.38 -0.12,-0.34 -0.12,-0.55h0.85c0,0.08 0.02,0.15 0.05,0.22s0.07,0.12 0.13,0.17 0.12,0.09 0.2,0.11 0.16,0.04 0.25,0.04c0.1,0 0.19,-0.01 0.27,-0.04s0.15,-0.07 0.2,-0.12 0.1,-0.11 0.13,-0.18 0.04,-0.15 0.04,-0.24c0,-0.11 -0.02,-0.21 -0.05,-0.29s-0.08,-0.15 -0.14,-0.2 -0.13,-0.09 -0.22,-0.11 -0.18,-0.04 -0.29,-0.04h-0.47v-0.65zM15.3,14.24c0,0.32 -0.03,0.6 -0.1,0.82s-0.17,0.42 -0.29,0.57 -0.28,0.26 -0.45,0.33 -0.37,0.1 -0.59,0.1 -0.41,-0.03 -0.59,-0.1 -0.33,-0.18 -0.46,-0.33 -0.23,-0.34 -0.3,-0.57 -0.11,-0.5 -0.11,-0.82v-0.74c0,-0.32 0.03,-0.6 0.1,-0.82s0.17,-0.42 0.29,-0.57 0.28,-0.26 0.45,-0.33 0.37,-0.1 0.59,-0.1 0.41,0.03 0.59,0.1 0.33,0.18 0.46,0.33 0.23,0.34 0.3,0.57 0.11,0.5 0.11,0.82v0.74zM14.45,13.38c0,-0.19 -0.01,-0.35 -0.04,-0.48s-0.07,-0.23 -0.12,-0.31 -0.11,-0.14 -0.19,-0.17 -0.16,-0.05 -0.25,-0.05 -0.18,0.02 -0.25,0.05 -0.14,0.09 -0.19,0.17 -0.09,0.18 -0.12,0.31 -0.04,0.29 -0.04,0.48v0.97c0,0.19 0.01,0.35 0.04,0.48s0.07,0.24 0.12,0.32 0.11,0.14 0.19,0.17 0.16,0.05 0.25,0.05 0.18,-0.02 0.25,-0.05 0.14,-0.09 0.19,-0.17 0.09,-0.19 0.11,-0.32c0.03,-0.13 0.04,-0.29 0.04,-0.48v-0.97z"/>
 </vector>
 
+
+================================================================================
+ФАЙЛ: src/main/res/drawable/ic_baseline_calendar_24.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#000000"
+        android:pathData="M19,4h-1V2h-2v2H8V2H6v2H5C3.89,4 3.01,4.9 3.01,6L3,20c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zM19,20H5V10h14v10zM9,14H7v-2h2v2zM13,14h-2v-2h2v2zM17,14h-2v-2h2v2zM9,18H7v-2h2v2zM13,18h-2v-2h2v2zM17,18h-2v-2h2v2z"/>
+</vector>
 
 ================================================================================
 ФАЙЛ: src/main/res/drawable/ic_baseline_arrow_forward_24.xml
@@ -17221,6 +18022,22 @@ useExternalFileDir=false
         android:width="48dp"
         android:height="48dp" />
 </shape>
+
+================================================================================
+ФАЙЛ: src/main/res/drawable/ic_baseline_show_chart_24.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M3.5,18.49l6-6.01 4,4L22,6.92l-1.41-1.41-7.09,7.97-4-4L2,16.99z"/>
+</vector>
 
 ================================================================================
 ФАЙЛ: src/main/res/drawable/ic_baseline_add_24.xml
@@ -20319,7 +21136,7 @@ useExternalFileDir=false
 ================================================================================
 ФАЙЛ: src/main/res/layout/fragment_history.xml
 ТИП: XML
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
 <?xml version="1.0" encoding="utf-8"?>
@@ -20330,80 +21147,151 @@ useExternalFileDir=false
     android:orientation="vertical"
     android:background="?attr/colorSurface">
 
-    <!-- Контент -->
+    <!-- Панель управления периодом -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp"
+        android:background="?attr/colorSurface">
 
-        <!-- Индикатор загрузки -->
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="wrap_content"
+        <Button
+            android:id="@+id/prevMonthButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="◀"
+            android:background="@android:color/transparent"
+            android:textSize="24sp" />
+
+        <TextView
+            android:id="@+id/periodTitle"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginTop="32dp"
-            android:visibility="gone" />
+            android:layout_weight="1"
+            android:text="Апрель 2026"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center" />
 
-        <!-- Таблица -->
-        <HorizontalScrollView
+        <Button
+            android:id="@+id/nextMonthButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:text="▶"
+            android:background="@android:color/transparent"
+            android:textSize="24sp" />
+
+        <ImageButton
+            android:id="@+id/calendarButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_baseline_calendar_24"
+            android:background="@android:color/transparent"
+            android:contentDescription="Выбрать период" />
+
+    </LinearLayout>
+
+    <!-- Поле поиска -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/searchLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="12dp"
+        android:layout_marginTop="0dp"
+        android:hint="Поиск по названию книги"
+        app:boxCornerRadiusBottomEnd="24dp"
+        app:boxCornerRadiusBottomStart="24dp"
+        app:boxCornerRadiusTopEnd="24dp"
+        app:boxCornerRadiusTopStart="24dp"
+        app:endIconMode="clear_text"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/searchInput"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1"
+            android:imeOptions="actionDone"
+            android:cursorVisible="true" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Кнопка Статистика -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/statsToggleButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:layout_marginBottom="8dp"
+        android:text="📊 Статистика"
+        android:backgroundTint="?attr/colorPrimary"
+        android:textColor="@android:color/white"
+        app:icon="@drawable/ic_baseline_show_chart_24"
+        app:iconGravity="textStart" />
+
+    <!-- Вертикальный скролл для таблицы -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <!-- Фиксированная колонка -->
             <LinearLayout
+                android:id="@+id/fixedColumnContainer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
-                <!-- Заголовки таблицы -->
+                android:orientation="vertical"
+                android:elevation="4dp"
+                android:background="?attr/colorSurface" />
+
+            <!-- Горизонтальный скролл для остальных колонок -->
+            <HorizontalScrollView
+                android:id="@+id/tableScrollView"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:scrollbars="horizontal">
+
                 <LinearLayout
-                    android:layout_width="match_parent"
+                    android:id="@+id/dynamicColumnsContainer"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:background="?attr/colorPrimary"
-                    android:padding="12dp">
-                    <TextView
-                        android:layout_width="100dp"
-                        android:layout_height="wrap_content"
-                        android:text="Дата"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="200dp"
-                        android:layout_height="wrap_content"
-                        android:text="Книга"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="120dp"
-                        android:layout_height="wrap_content"
-                        android:text="Событие"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                    <TextView
-                        android:layout_width="150dp"
-                        android:layout_height="wrap_content"
-                        android:text="Детали"
-                        android:textColor="@android:color/white"
-                        android:textStyle="bold" />
-                </LinearLayout>
-                <!-- Список записей -->
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/historyRecycler"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
-            </LinearLayout>
-        </HorizontalScrollView>
-        <!-- Сообщение при отсутствии данных -->
-        <TextView
-            android:id="@+id/emptyText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:layout_marginTop="32dp"
-            android:text="Нет данных. Нажмите иконку синхронизации в верхнем меню"
-            android:textSize="16sp"
-            android:visibility="gone" />
-    </LinearLayout>
+                    android:orientation="vertical" />
+
+            </HorizontalScrollView>
+
+        </LinearLayout>
+
+    </ScrollView>
+
+    <!-- Прогресс загрузки -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="32dp"
+        android:visibility="gone" />
+
+    <!-- Сообщение при отсутствии данных -->
+    <TextView
+        android:id="@+id/emptyText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="32dp"
+        android:text="Нет данных за выбранный период"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
 </LinearLayout>
 
 ================================================================================
@@ -20629,9 +21517,9 @@ dependencies {
 ================================================================================
 СТАТИСТИКА
 ================================================================================
-Всего файлов в проекте: 2779
+Всего файлов в проекте: 2855
 Обработано файлов: 0
 Пропущено файлов: 0
 Всего строк кода: 0
-Дата создания отчета: Thu Apr 23 03:02:18 PM +05 2026
+Дата создания отчета: Sat Apr 25 07:11:10 PM +05 2026
 ================================================================================

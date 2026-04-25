@@ -148,8 +148,6 @@ class Bookshelf(
                 coverFile.delete()
                 return Try.failure(ImportError.Database(DebugError("Could not insert book into database.")))
             }
-
-            // TODO: Восстановление прогресса из restored_books будет добавлено позже
         }
             .onFailure {
                 return Try.failure(ImportError.Publication(PublicationError(it)))
@@ -164,8 +162,14 @@ class Bookshelf(
 
     suspend fun deleteBook(book: Book) {
         val id = book.id!!
-        bookRepository.deleteBook(id)
+        // Мягкое удаление - только флаг, НЕ удаляем статистику
+        bookRepository.softDeleteBook(id)
+        bookRepository.updateHasFile(id, false)
+
+        // Файлы удаляем, но статистика остаётся в БД
         tryOrLog { book.url.toFile()?.delete() }
         tryOrLog { File(book.cover).delete() }
+
+        Timber.d("Book soft deleted (statistics preserved): $id, title=${book.title}")
     }
 }

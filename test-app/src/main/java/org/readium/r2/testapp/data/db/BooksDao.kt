@@ -7,7 +7,6 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.testapp.data.model.*
-import org.readium.r2.testapp.data.model.ReadingStat
 
 @Dao
 interface BooksDao {
@@ -24,7 +23,7 @@ interface BooksDao {
     @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IDENTIFIER + " = :identifier")
     suspend fun getBookByIdentifier(identifier: String): Book?
 
-    @Query("SELECT * FROM " + Book.TABLE_NAME + " ORDER BY " + Book.CREATION_DATE + " desc")
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 ORDER BY " + Book.CREATION_DATE + " desc")
     fun getAllBooks(): Flow<List<Book>>
 
     @Update
@@ -87,15 +86,21 @@ interface BooksDao {
     @Query("DELETE FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.ID} = :id")
     suspend fun deleteHighlight(id: Long)
 
-    // Методы для работы со статистикой чтения - используем String для даты
+    // Методы для работы со статистикой чтения
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId ORDER BY date ASC")
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>>
+
+
+
+    @Query("SELECT * FROM reading_stats ORDER BY date ASC")
+    fun getAllReadingStats(): Flow<List<ReadingStat>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReadingStat(stat: ReadingStat)
 
+
     @Query("DELETE FROM reading_stats WHERE book_id = :bookId AND date = :date")
-    suspend fun deleteReadingStat(bookId: Long, date: String) // Используем String вместо LocalDate
+    suspend fun deleteReadingStat(bookId: Long, date: String)
 
     @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalPagesRead(bookId: Long): Int?
@@ -112,13 +117,8 @@ interface BooksDao {
     @Query("UPDATE books SET pages_read = :pages WHERE id = :bookId")
     suspend fun updateBookPages(bookId: Long, pages: Int)
 
-    // Добавьте эти методы в интерфейс BooksDao
-
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId AND date = :date")
     suspend fun getReadingStatByDate(bookId: Long, date: String): ReadingStat?
-
-    @Query("SELECT * FROM reading_stats ORDER BY date ASC")
-    fun getAllReadingStats(): Flow<List<ReadingStat>>
 
     @Query(
         """
@@ -134,4 +134,39 @@ interface BooksDao {
         hoursToAdd: Double,
         pagesToAdd: Int,
     )
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ И ВОССТАНОВЛЕНИЯ =====
+
+    @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.IS_DELETED + " = 1 WHERE " + Book.ID + " = :id")
+    suspend fun softDeleteBook(id: Long)
+
+    @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.IS_DELETED + " = 0 WHERE " + Book.ID + " = :id")
+    suspend fun restoreBook(id: Long)
+
+    @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.HAS_FILE + " = :hasFile WHERE " + Book.ID + " = :id")
+    suspend fun updateHasFile(id: Long, hasFile: Boolean)
+
+    @Query(
+        "UPDATE " + Book.TABLE_NAME +
+            " SET " + Book.READING_TIME + " = :readingTime, " +
+            Book.PAGES_READ + " = :pagesRead, " +
+            Book.CURRENT_PAGE + " = :currentPage, " +
+            Book.PROGRESSION + " = :locator, " +
+            Book.LAST_READ_DATE + " = :lastReadDate " +
+            " WHERE " + Book.ID + " = :id"
+    )
+    suspend fun updateReadingProgress(
+        id: Long,
+        readingTime: Long,
+        pagesRead: Int,
+        currentPage: Int,
+        locator: String,
+        lastReadDate: Long
+    )
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier")
+    suspend fun getBookByServerIdentifier(serverIdentifier: String): Book?
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 OR " + Book.HAS_FILE + " = 0")
+    suspend fun getAllBooksForSync(): List<Book>
 }

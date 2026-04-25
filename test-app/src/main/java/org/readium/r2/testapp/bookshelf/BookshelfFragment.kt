@@ -1,9 +1,3 @@
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.bookshelf
 
 import android.content.Intent
@@ -24,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.readium.r2.shared.DelicateReadiumApi
@@ -35,13 +30,6 @@ import org.readium.r2.testapp.databinding.FragmentBookshelfBinding
 import org.readium.r2.testapp.opds.GridAutoFitLayoutManager
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.viewLifecycle
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
-import androidx.navigation.findNavController
-import com.google.android.material.snackbar.Snackbar
-
-
 
 class BookshelfFragment : Fragment() {
 
@@ -75,9 +63,6 @@ class BookshelfFragment : Fragment() {
         setHasOptionsMenu(true)
     }
 
-
-
-
     fun performSync() {
         lifecycleScope.launch {
             val snackbar = Snackbar.make(
@@ -88,18 +73,18 @@ class BookshelfFragment : Fragment() {
             snackbar.show()
 
             try {
-                val app = requireContext().applicationContext as Application
                 val result = app.syncManager.syncAllBooks()
 
                 snackbar.dismiss()
 
                 result.onSuccess { response ->
-                    val message = "Синхронизация завершена:\n" +
-                        "📚 Создано книг: ${response.booksCreated}\n" +
-                        "🔄 Обновлено книг: ${response.booksUpdated}\n" +
-                        "📊 Создано записей: ${response.statsCreated}\n" +
-                        "🔄 Обновлено записей: ${response.statsUpdated}"
-
+                    val message = buildString {
+                        append("Синхронизация завершена:\n")
+                        append("📚 Создано книг: ${response.booksCreated}\n")
+                        append("🔄 Обновлено книг: ${response.booksUpdated}\n")
+                        append("📊 Создано записей: ${response.statsCreated}\n")
+                        append("🔄 Обновлено записей: ${response.statsUpdated}")
+                    }
                     Snackbar.make(requireView(), message, Snackbar.LENGTH_LONG).show()
                 }.onFailure { error ->
                     Snackbar.make(requireView(), "Ошибка: ${error.message}", Snackbar.LENGTH_LONG).show()
@@ -110,11 +95,6 @@ class BookshelfFragment : Fragment() {
             }
         }
     }
-    private fun navigateToHistory() {
-        val navController = requireView().findNavController()
-        navController.navigate(R.id.action_bookshelf_to_history)
-    }
-
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -124,8 +104,6 @@ class BookshelfFragment : Fragment() {
         binding = FragmentBookshelfBinding.inflate(inflater, container, false)
         return binding.root
     }
-
-
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -142,10 +120,6 @@ class BookshelfFragment : Fragment() {
             },
             onBookLongClick = { book -> confirmDeleteBook(book) }
         )
-        bookshelfAdapter.setOnEditBookClick { book ->
-            showEditBookDialog(book)
-        }
-
         bookshelfAdapter.setOnEditBookClick { book ->
             showEditBookDialog(book)
         }
@@ -170,12 +144,9 @@ class BookshelfFragment : Fragment() {
             setHasFixedSize(true)
             layoutManager = GridAutoFitLayoutManager(requireContext(), 120)
             adapter = bookshelfAdapter
-            addItemDecoration(
-                VerticalSpaceItemDecoration(
-                    10
-                )
-            )
+            addItemDecoration(VerticalSpaceItemDecoration(10))
         }
+
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 bookshelfViewModel.books.collectLatest {
@@ -221,7 +192,6 @@ class BookshelfFragment : Fragment() {
                     urlEditText.error = getString(R.string.invalid_url)
                     return@setPositiveButton
                 }
-
                 bookshelfViewModel.addPublicationFromWeb(url)
             }
             .show()
@@ -232,7 +202,6 @@ class BookshelfFragment : Fragment() {
             is BookshelfViewModel.Event.OpenPublicationError -> {
                 event.error.toUserError().show(requireActivity())
             }
-
             is BookshelfViewModel.Event.LaunchReader -> {
                 val intent = ReaderActivityContract().createIntent(
                     requireContext(),
@@ -245,7 +214,6 @@ class BookshelfFragment : Fragment() {
 
     class VerticalSpaceItemDecoration(private val verticalSpaceHeight: Int) :
         RecyclerView.ItemDecoration() {
-
         override fun getItemOffsets(
             outRect: Rect,
             view: View,

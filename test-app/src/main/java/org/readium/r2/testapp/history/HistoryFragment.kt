@@ -4,6 +4,9 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
@@ -39,6 +42,7 @@ class HistoryFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        setHasOptionsMenu(true)
 
         setupPeriodControls()
         setupSearch()
@@ -47,6 +51,46 @@ class HistoryFragment : Fragment() {
         setupObservers()
 
         viewModel.loadData()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.menu_history, menu)
+        super.onCreateOptionsMenu(menu, inflater)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_sync_history -> {
+                syncWithServer()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun syncWithServer() {
+        lifecycleScope.launch {
+            val snackbar = Snackbar.make(binding.root, "Синхронизация с сервером...", Snackbar.LENGTH_INDEFINITE)
+            snackbar.show()
+
+            try {
+                val app = requireContext().applicationContext as org.readium.r2.testapp.Application
+                val result = app.syncManager.syncHistoryFromServer()
+
+                snackbar.dismiss()
+
+                result.onSuccess { data ->
+                    val message = "Синхронизация завершена: загружено ${data.books.size} книг, ${data.readingStats.size} записей"
+                    Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                    viewModel.loadData()
+                }.onFailure { error ->
+                    Snackbar.make(binding.root, "Ошибка: ${error.message}", Snackbar.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                snackbar.dismiss()
+                Snackbar.make(binding.root, "Ошибка: ${e.message}", Snackbar.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun setupPeriodControls() {
@@ -72,7 +116,6 @@ class HistoryFragment : Fragment() {
             }
         })
 
-        // При нажатии на Done — скрываем клавиатуру и убираем курсор
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
                 hideKeyboardAndClearFocus()
@@ -82,31 +125,30 @@ class HistoryFragment : Fragment() {
     }
 
     private fun setupFocusHandling() {
-        // При нажатии в любую область экрана (кроме поля поиска) — убираем фокус
         binding.root.setOnTouchListener { _, _ ->
             hideKeyboardAndClearFocus()
-            false  // Возвращаем false, чтобы не блокировать другие touch-события
+            false
         }
 
-        // Запрещаем всплывание клавиатуры при автоматическом получении фокуса
         binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 hideKeyboardAndClearFocus()
             }
         }
+
+        binding.searchInput.setOnClickListener {
+            binding.searchInput.isCursorVisible = true
+            binding.searchInput.requestFocus()
+        }
     }
 
     private fun hideKeyboardAndClearFocus() {
-        // Скрываем клавиатуру
         val imm = requireContext().getSystemService(android.app.Activity.INPUT_METHOD_SERVICE) as InputMethodManager
         imm.hideSoftInputFromWindow(binding.searchInput.windowToken, 0)
-
-        // Убираем курсор и фокус с поля поиска
         binding.searchInput.clearFocus()
         binding.searchInput.isCursorVisible = false
     }
 
-    // Восстанавливаем курсор при фокусе на поле поиска
     private fun setupStatsToggle() {
         binding.statsToggleButton.setOnClickListener {
             showStats = !showStats
@@ -119,12 +161,6 @@ class HistoryFragment : Fragment() {
                 binding.statsToggleButton.text = "📊 Показать статистику"
                 binding.statsToggleButton.icon = null
             }
-        }
-
-        // Восстанавливаем курсор при фокусе на поле поиска
-        binding.searchInput.setOnClickListener {
-            binding.searchInput.isCursorVisible = true
-            binding.searchInput.requestFocus()
         }
     }
 

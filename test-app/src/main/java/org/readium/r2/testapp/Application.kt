@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.BuildConfig.DEBUG
+import org.readium.r2.testapp.alarm.AlarmForegroundService
 import org.readium.r2.testapp.alarm.AlarmScheduler
 import org.readium.r2.testapp.data.AlarmPreferencesDataStore
 import org.readium.r2.testapp.data.BookRepository
@@ -21,14 +22,13 @@ import org.readium.r2.testapp.domain.Bookshelf
 import org.readium.r2.testapp.domain.CoverStorage
 import org.readium.r2.testapp.domain.PublicationRetriever
 import org.readium.r2.testapp.reader.ReaderRepository
+import org.readium.r2.testapp.sync.HistorySyncManager
 import org.readium.r2.testapp.sync.SyncManager
 import org.readium.r2.testapp.utils.tryOrLog
 import timber.log.Timber
 import java.io.File
 import java.util.Properties
 import java.util.concurrent.Executors
-import org.readium.r2.testapp.alarm.AlarmForegroundService
-import org.readium.r2.testapp.sync.HistorySyncManager
 
 class Application : android.app.Application() {
 
@@ -55,15 +55,13 @@ class Application : android.app.Application() {
     lateinit var sleepRepository: SleepRepository
         private set
 
+    lateinit var historySyncManager: HistorySyncManager
+        private set
+
     private val coroutineScope: CoroutineScope = MainScope()
 
     private val Context.navigatorPreferences: DataStore<Preferences>
         by preferencesDataStore(name = "navigator-preferences")
-
-    lateinit var historySyncManager: HistorySyncManager
-        private set
-
-
 
     override fun onCreate() {
         if (DEBUG) {
@@ -73,9 +71,6 @@ class Application : android.app.Application() {
 
         super.onCreate()
 
-        historySyncManager = HistorySyncManager(this, this)
-
-
         DynamicColors.applyToActivitiesIfAvailable(this)
 
         readium = Readium(this)
@@ -84,8 +79,10 @@ class Application : android.app.Application() {
 
         val database = AppDatabase.getDatabase(this)
 
-
+        // Инициализация bookRepository ПЕРВОЙ, так как она нужна другим компонентам
         bookRepository = BookRepository(database.booksDao())
+
+        // Затем инициализация остальных репозиториев
         sleepRepository = SleepRepository(database.sleepDao())
         alarmPreferencesDataStore = AlarmPreferencesDataStore(this)
 
@@ -116,7 +113,10 @@ class Application : android.app.Application() {
             navigatorPreferences
         )
 
+        // Инициализация SyncManager ПОСЛЕ bookRepository
         syncManager = SyncManager(this, bookRepository)
+
+        historySyncManager = HistorySyncManager(this, this)
 
         // Восстанавливаем будильники после установки приложения
         coroutineScope.launch(Dispatchers.IO) {
@@ -124,11 +124,11 @@ class Application : android.app.Application() {
                 AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
             }
         }
+
         // Запускаем Foreground Service для будильника
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             AlarmForegroundService.start(this)
         }
-
     }
 
     private fun computeStorageDir(): File {

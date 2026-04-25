@@ -21,6 +21,8 @@ import timber.log.Timber
 class BookRepository(
     private val booksDao: BooksDao,
 ) {
+    // ===== ОСНОВНЫЕ МЕТОДЫ =====
+
     fun books(): Flow<List<Book>> = booksDao.getAllBooks()
 
     suspend fun get(id: Long) = booksDao.get(id)
@@ -47,8 +49,6 @@ class BookRepository(
 
     suspend fun updateBook(book: Book) = booksDao.updateBook(book)
 
-    fun getAllReadingStats(): Flow<List<ReadingStat>> = booksDao.getAllReadingStats()
-
     suspend fun updateBookPages(bookId: Long, pages: Int) {
         Timber.d("updateBookPages: bookId=$bookId, pages=$pages")
         booksDao.updateBookPages(bookId, pages)
@@ -59,106 +59,8 @@ class BookRepository(
         booksDao.updateBookReadingTime(bookId, seconds)
     }
 
-    // ===== МЕТОДЫ ДЛЯ РАБОТЫ СО СТАТИСТИКОЙ ПО ДАТАМ =====
-
-    /**
-     * Сохраняет время чтения за текущую дату
-     */
-    suspend fun addReadingTime(bookId: Long, seconds: Long) {
-        val today = LocalDate.now()
-        val hoursToAdd = seconds / 3600.0
-
-        Timber.d("addReadingTime: bookId=$bookId, seconds=$seconds, hoursToAdd=$hoursToAdd, date=$today")
-
-        val existingStat = booksDao.getReadingStatByDate(bookId, today.toString())
-
-        if (existingStat == null) {
-            // Создаем новую запись
-            val readingStat = ReadingStat(
-                bookId = bookId,
-                date = today,
-                pagesRead = 0,
-                hoursRead = hoursToAdd
-            )
-            booksDao.insertReadingStat(readingStat)
-            Timber.d("Created new reading stat for $today: $hoursToAdd hours")
-        } else {
-            // Обновляем существующую
-            booksDao.addReadingTimeToDate(bookId, today.toString(), hoursToAdd, 0)
-            Timber.d("Updated existing reading stat for $today: +$hoursToAdd hours (was ${existingStat.hoursRead})")
-        }
-
-        // Обновляем общее время на обложке (сумма за все дни)
-        updateTotalReadingTime(bookId)
-    }
-
-    /**
-     * Обновляет общее время на обложке (сумма за все дни)
-     */
-    private suspend fun updateTotalReadingTime(bookId: Long) {
-        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
-        val totalSeconds = (totalHours * 3600).toLong().coerceAtLeast(0)
-        booksDao.updateBookReadingTime(bookId, totalSeconds)
-        Timber.d("Total reading time updated: $totalSeconds seconds ($totalHours hours)")
-    }
-
-    /**
-     * Получает общее время чтения для обложки
-     */
-    suspend fun getTotalReadingTime(bookId: Long): Long {
-        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
-        return (totalHours * 3600).toLong()
-    }
-
-    // ===== СУЩЕСТВУЮЩИЕ МЕТОДЫ =====
-
-    suspend fun insertBookmark(bookId: Long, publication: Publication, locator: Locator): Long {
-        val resource = publication.readingOrder.indexOfFirstWithHref(locator.href)!!
-        val bookmark = Bookmark(
-            creation = DateTime().toDate().time,
-            bookId = bookId,
-            resourceIndex = resource.toLong(),
-            resourceHref = locator.href.toString(),
-            resourceType = locator.mediaType.toString(),
-            resourceTitle = locator.title.orEmpty(),
-            location = locator.locations.toJSON().toString(),
-            locatorText = Locator.Text().toJSON().toString()
-        )
-        return booksDao.insertBookmark(bookmark)
-    }
-
-    fun bookmarksForBook(bookId: Long): Flow<List<Bookmark>> =
-        booksDao.getBookmarksForBook(bookId)
-
-    suspend fun deleteBookmark(bookmarkId: Long) = booksDao.deleteBookmark(bookmarkId)
-
-    suspend fun highlightById(id: Long): Highlight? =
-        booksDao.getHighlightById(id)
-
     suspend fun updateBookTitleAndAuthor(bookId: Long, title: String, author: String?) {
         booksDao.updateBookTitleAndAuthor(bookId, title, author)
-    }
-
-    fun highlightsForBook(bookId: Long): Flow<List<Highlight>> =
-        booksDao.getHighlightsForBook(bookId)
-
-    suspend fun addHighlight(
-        bookId: Long,
-        style: Highlight.Style,
-        @ColorInt tint: Int,
-        locator: Locator,
-        annotation: String,
-    ): Long =
-        booksDao.insertHighlight(Highlight(bookId, style, tint, locator, annotation))
-
-    suspend fun deleteHighlight(id: Long) = booksDao.deleteHighlight(id)
-
-    suspend fun updateHighlightAnnotation(id: Long, annotation: String) {
-        booksDao.updateHighlightAnnotation(id, annotation)
-    }
-
-    suspend fun updateHighlightStyle(id: Long, style: Highlight.Style, @ColorInt tint: Int) {
-        booksDao.updateHighlightStyle(id, style, tint)
     }
 
     suspend fun insertBook(
@@ -178,28 +80,146 @@ class BookRepository(
             cover = cover.path,
             readingTime = 0,
             pagesRead = 0,
-            lastReadDate = null
+            currentPage = 0,
+            totalPages = 0,
+            lastReadDate = null,
+            serverIdentifier = publication.metadata.identifier
         )
         return booksDao.insertBook(book)
     }
 
+    suspend fun deleteBook(id: Long) = booksDao.deleteBook(id)
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ =====
+
+    suspend fun softDeleteBook(bookId: Long) = booksDao.softDeleteBook(bookId)
+
+    suspend fun restoreBook(bookId: Long) = booksDao.restoreBook(bookId)
+
+    suspend fun updateHasFile(bookId: Long, hasFile: Boolean) = booksDao.updateHasFile(bookId, hasFile)
+
+    suspend fun updateReadingProgress(
+        bookId: Long,
+        readingTime: Long,
+        pagesRead: Int,
+        currentPage: Int,
+        locator: Locator,
+        totalPages: Int? = null
+    ) {
+        val finalCurrentPage = if (totalPages != null && currentPage >= totalPages && totalPages > 0) {
+            0
+        } else {
+            currentPage
+        }
+
+        booksDao.updateReadingProgress(
+            id = bookId,
+            readingTime = readingTime,
+            pagesRead = pagesRead,
+            currentPage = finalCurrentPage,
+            locator = locator.toJSON().toString(),
+            lastReadDate = System.currentTimeMillis()
+        )
+    }
+
+    suspend fun getBookByServerIdentifier(serverIdentifier: String): Book? =
+        booksDao.getBookByServerIdentifier(serverIdentifier)
+
+    // ===== МЕТОДЫ ДЛЯ СТАТИСТИКИ =====
+
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>> =
         booksDao.getReadingStatsForBook(bookId)
 
-    suspend fun saveReadingStat(stat: ReadingStat) {
-        booksDao.insertReadingStat(stat)
+    fun getAllReadingStats(): Flow<List<ReadingStat>> = booksDao.getAllReadingStats()
+
+    suspend fun saveReadingStat(bookId: Long, date: LocalDate, pagesRead: Int, hoursRead: Double) {
+        val readingStat = ReadingStat(
+            bookId = bookId,
+            date = date,
+            pagesRead = pagesRead,
+            hoursRead = hoursRead
+        )
+        booksDao.insertReadingStat(readingStat)
     }
 
     suspend fun deleteReadingStat(bookId: Long, date: LocalDate) {
         booksDao.deleteReadingStat(bookId, date.toString())
     }
 
-    suspend fun getTotalPagesRead(bookId: Long): Int =
-        booksDao.getTotalPagesRead(bookId) ?: 0
+    suspend fun insertBookWithoutFile(book: Book): Long {
+        return booksDao.insertBook(book)
+    }
 
-    suspend fun getTotalHoursRead(bookId: Long): Double =
-        booksDao.getTotalHoursRead(bookId) ?: 0.0
+    suspend fun getTotalPagesRead(bookId: Long): Int = booksDao.getTotalPagesRead(bookId) ?: 0
 
-    suspend fun deleteBook(id: Long) =
-        booksDao.deleteBook(id)
+    suspend fun getTotalHoursRead(bookId: Long): Double = booksDao.getTotalHoursRead(bookId) ?: 0.0
+
+    suspend fun addReadingTime(bookId: Long, seconds: Long) {
+        val today = LocalDate.now()
+        val hoursToAdd = seconds / 3600.0
+        val existingStat = booksDao.getReadingStatByDate(bookId, today.toString())
+        if (existingStat == null) {
+            val readingStat = ReadingStat(
+                bookId = bookId,
+                date = today,
+                pagesRead = 0,
+                hoursRead = hoursToAdd
+            )
+            booksDao.insertReadingStat(readingStat)
+        } else {
+            booksDao.addReadingTimeToDate(bookId, today.toString(), hoursToAdd, 0)
+        }
+        updateTotalReadingTime(bookId)
+    }
+
+    private suspend fun updateTotalReadingTime(bookId: Long) {
+        val totalHours = booksDao.getTotalHoursRead(bookId) ?: 0.0
+        val totalSeconds = (totalHours * 3600).toLong().coerceAtLeast(0)
+        booksDao.updateBookReadingTime(bookId, totalSeconds)
+    }
+
+    // ===== МЕТОДЫ ДЛЯ ЗАКЛАДОК =====
+
+    fun bookmarksForBook(bookId: Long): Flow<List<Bookmark>> =
+        booksDao.getBookmarksForBook(bookId)
+
+    suspend fun insertBookmark(bookId: Long, publication: Publication, locator: Locator): Long {
+        val resource = publication.readingOrder.indexOfFirstWithHref(locator.href)!!
+        val bookmark = Bookmark(
+            creation = DateTime().toDate().time,
+            bookId = bookId,
+            resourceIndex = resource.toLong(),
+            resourceHref = locator.href.toString(),
+            resourceType = locator.mediaType.toString(),
+            resourceTitle = locator.title.orEmpty(),
+            location = locator.locations.toJSON().toString(),
+            locatorText = Locator.Text().toJSON().toString()
+        )
+        return booksDao.insertBookmark(bookmark)
+    }
+
+    suspend fun deleteBookmark(bookmarkId: Long) = booksDao.deleteBookmark(bookmarkId)
+
+    // ===== МЕТОДЫ ДЛЯ ВЫДЕЛЕНИЙ =====
+
+    fun highlightsForBook(bookId: Long): Flow<List<Highlight>> =
+        booksDao.getHighlightsForBook(bookId)
+
+    suspend fun highlightById(id: Long): Highlight? = booksDao.getHighlightById(id)
+
+    suspend fun addHighlight(
+        bookId: Long,
+        style: Highlight.Style,
+        @ColorInt tint: Int,
+        locator: Locator,
+        annotation: String,
+    ): Long = booksDao.insertHighlight(Highlight(bookId, style, tint, locator, annotation))
+
+    suspend fun updateHighlightAnnotation(id: Long, annotation: String) =
+        booksDao.updateHighlightAnnotation(id, annotation)
+
+    suspend fun updateHighlightStyle(id: Long, style: Highlight.Style, @ColorInt tint: Int) =
+        booksDao.updateHighlightStyle(id, style, tint)
+
+    suspend fun deleteHighlight(id: Long) = booksDao.deleteHighlight(id)
 }

@@ -1,11 +1,3 @@
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
-@file:OptIn(ExperimentalReadiumApi::class)
-
 package org.readium.r2.testapp.reader
 
 import android.graphics.Color
@@ -118,31 +110,13 @@ class ReaderViewModel(
     private var lastSavedTotalSeconds: Long = 0
 
     init {
-
-        var saveJob: Job? = null
-
-        fun startAutoSave() {
-            saveJob?.cancel()
-            saveJob = viewModelScope.launch {
-                while (isActive) {
-                    delay(30_000) // Сохранять каждые 30 секунд
-                    savePagesAndTime()
-                }
-            }
-        }
-
-        fun stopAutoSave() {
-            saveJob?.cancel()
-            saveJob = null
-        }
-
         viewModelScope.launch {
             bookRepository.get(bookId)?.let { book ->
                 readingTimer.setTime(book.readingTime)
-                lastSavedTotalSeconds = book.readingTime // ✅ Инициализируем точку отсчета
+                lastSavedTotalSeconds = book.readingTime
                 lastSavedPage = book.pagesRead
-                maxReachedPage = book.pagesRead
-                Timber.d("Loaded stats: time=${book.readingTime}s, pages=${book.pagesRead}")
+                maxReachedPage = book.currentPage
+                Timber.d("Loaded stats: time=${book.readingTime}s, pages=${book.pagesRead}, currentPage=${book.currentPage}")
             }
 
             try {
@@ -150,19 +124,18 @@ class ReaderViewModel(
                 Timber.d("Total positions for book $bookId: $_totalPositions")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to get total positions, using fallback")
-                _totalPositions = 100 // fallback для PDF
+                _totalPositions = 100
             }
         }
     }
+
     fun startReadingTimer() {
         readingTimer.start()
-
-        // Запускаем периодическое сохранение
         autoSaveJob?.cancel()
         autoSaveJob = viewModelScope.launch {
             while (isActive) {
                 delay(AUTO_SAVE_INTERVAL_MS)
-                savePagesAndTime() // Сохраняем даже без смены страницы
+                savePagesAndTime()
             }
         }
         Timber.d("Reading timer started for book $bookId")
@@ -170,7 +143,7 @@ class ReaderViewModel(
 
     fun pauseReadingTimer() {
         readingTimer.pause()
-        autoSaveJob?.cancel() // Отменяем периодические сохранения
+        autoSaveJob?.cancel()
         autoSaveJob = null
         Timber.d("Reading timer paused for book $bookId, elapsed: ${readingTimer.elapsedSeconds.value}s")
     }
@@ -188,10 +161,6 @@ class ReaderViewModel(
         } ?: publication.locatorFromLink(publication.readingOrder.firstOrNull()!!)!!
     }
 
-    /**
-     * Вычисляет номер текущей страницы на основе локатора
-     * Работает для EPUB, PDF и других форматов
-     */
     fun calculateCurrentPage(locator: Locator): Int {
         val position = locator.locations.position ?: 1
         return position.coerceAtLeast(1)
@@ -226,7 +195,7 @@ class ReaderViewModel(
         val currentPage = calculateCurrentPage(currentLocator)
         val today = LocalDate.now()
 
-        // === 1. Сохранение страниц (всегда, если есть прогресс) ===
+        // Сохранение страниц
         if (currentPage > maxReachedPage) {
             maxReachedPage = currentPage
         }
@@ -236,58 +205,51 @@ class ReaderViewModel(
             val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
             val todayStat = existingStats.find { it.date == today }
 
-            // Обновляем дневную статистику по страницам
             val newDailyPages = (todayStat?.pagesRead ?: 0) + incrementalPages
-            bookRepository.saveReadingStat(ReadingStat(
-                bookId = bookId,
-                date = today,
-                pagesRead = newDailyPages,
-                hoursRead = todayStat?.hoursRead ?: 0.0  // время не меняем здесь
-            ))
+            val hoursDelta = todayStat?.hoursRead ?: 0.0
 
-            // Обновляем общее количество страниц в книге
+            bookRepository.saveReadingStat(bookId, today, newDailyPages, hoursDelta)
+
             val book = bookRepository.get(bookId)
             val newTotalPages = (book?.pagesRead ?: 0) + incrementalPages
-            bookRepository.updateReadingStats(
+            val totalPages = book?.totalPages ?: 0
+
+            bookRepository.updateReadingProgress(
                 bookId = bookId,
-                readingTime = book?.readingTime ?: 0L,  // время не трогаем
+                readingTime = book?.readingTime ?: 0L,
                 pagesRead = newTotalPages,
-                locator = currentLocator
+                currentPage = currentPage,
+                locator = currentLocator,
+                totalPages = totalPages
             )
 
-            lastSavedPage = maxReachedPage  // ✅ Обновляем точку отсчёта для страниц
-            Timber.d("Saved pages: +$incrementalPages (total: $newTotalPages)")
+            lastSavedPage = maxReachedPage
+            Timber.d("Saved pages: +$incrementalPages (total: $newTotalPages), currentPage=$currentPage, totalPages=$totalPages")
         }
 
-        // === 2. Сохранение времени (только если прошло достаточно времени) ===
+        // Сохранение времени
         val deltaSeconds = (currentTotalSeconds - lastSavedTotalSeconds).coerceAtLeast(0)
 
-        // Сохраняем время, если прошло >= 10 секунд (чтобы не спамить БД)
         if (deltaSeconds >= 10L) {
             val existingStats = bookRepository.getReadingStatsForBook(bookId).first()
             val todayStat = existingStats.find { it.date == today }
 
             val deltaHours = deltaSeconds / 3600.0
             val newDailyHours = (todayStat?.hoursRead ?: 0.0) + deltaHours
+            val existingPages = todayStat?.pagesRead ?: 0
 
-            bookRepository.saveReadingStat(ReadingStat(
-                bookId = bookId,
-                date = today,
-                pagesRead = todayStat?.pagesRead ?: 0,  // страницы не меняем здесь
-                hoursRead = newDailyHours
-            ))
+            bookRepository.saveReadingStat(bookId, today, existingPages, newDailyHours)
 
-            // Обновляем общее время НАПРЯМУЮ (без SUM)
             val book = bookRepository.get(bookId)
             val newTotalReadingTime = (book?.readingTime ?: 0L) + deltaSeconds
             bookRepository.updateReadingStats(
                 bookId = bookId,
                 readingTime = newTotalReadingTime,
-                pagesRead = book?.pagesRead ?: 0,  // страницы не трогаем
+                pagesRead = book?.pagesRead ?: 0,
                 locator = currentLocator
             )
 
-            lastSavedTotalSeconds = currentTotalSeconds  // ✅ Обновляем точку отсчёта для времени
+            lastSavedTotalSeconds = currentTotalSeconds
             Timber.d("Saved time: +${deltaSeconds}s (total: ${newTotalReadingTime}s)")
         }
     }
@@ -474,7 +436,6 @@ class ReaderViewModel(
     // ===== ON CLEARED =====
 
     override fun onCleared() {
-        // Финальное сохранение — гарантированно запишет последние секунды
         viewModelScope.launch {
             savePagesAndTime()
         }.invokeOnCompletion {

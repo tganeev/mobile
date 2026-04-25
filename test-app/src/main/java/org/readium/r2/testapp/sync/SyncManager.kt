@@ -4,17 +4,19 @@ import android.content.Context
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
+import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Book
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
+import java.time.LocalDate
+import java.util.concurrent.TimeUnit
 
 interface SyncApi {
     @POST("/api/sync")
@@ -22,6 +24,9 @@ interface SyncApi {
 
     @GET("/api/sync/test")
     suspend fun testConnection(): Map<String, String>
+
+    @POST("/api/sync/history")
+    suspend fun syncHistory(@Body request: SyncHistoryRequest): SyncHistoryResponse
 }
 
 class SyncManager(
@@ -32,11 +37,11 @@ class SyncManager(
         private const val TAG = "SyncManager"
         private const val BASE_URL = "https://my-pkms.ru"
         private const val CONNECTION_TIMEOUT = 30L
+        private const val PREFS_NAME = "sync_prefs"
+        private const val KEY_LAST_SYNC_TIMESTAMP = "last_sync_timestamp"
     }
 
-    private val gson: Gson = GsonBuilder()
-        .setPrettyPrinting()
-        .create()
+    private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 
     private val api: SyncApi by lazy {
         val loggingInterceptor = HttpLoggingInterceptor { message ->
@@ -61,24 +66,122 @@ class SyncManager(
         retrofit.create(SyncApi::class.java)
     }
 
-    suspend fun testConnection(): Result<Map<String, String>> = withContext(Dispatchers.IO) {
+    private fun getLastSyncTimestamp(): Long {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(KEY_LAST_SYNC_TIMESTAMP, 0)
+    }
+
+    private fun saveLastSyncTimestamp(timestamp: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putLong(KEY_LAST_SYNC_TIMESTAMP, timestamp).apply()
+    }
+
+    suspend fun syncHistoryFromServer(username: String = "test"): Result<SyncHistoryData> = withContext(Dispatchers.IO) {
         try {
-            Log.d(TAG, "Testing connection to $BASE_URL")
-            val response = api.testConnection()
-            Log.d(TAG, "Connection test successful: $response")
-            Result.success(response)
+            Log.d(TAG, "Starting history sync for user: $username")
+
+            val lastSync = getLastSyncTimestamp()
+            val request = SyncHistoryRequest(username, if (lastSync > 0) lastSync else null)
+
+            val response = api.syncHistory(request)
+
+            if (!response.success || response.data == null) {
+                return@withContext Result.failure(Exception("Server returned error or no data"))
+            }
+
+            val data = response.data
+
+            data.books.forEach { serverBook ->
+                saveBookFromServer(serverBook)
+            }
+
+            data.readingStats.forEach { serverStat ->
+                saveReadingStatFromServer(serverStat)
+            }
+
+            saveLastSyncTimestamp(data.lastSyncTimestamp)
+
+            Log.d(TAG, "History sync completed: ${data.books.size} books, ${data.readingStats.size} stats")
+            Result.success(data)
+
         } catch (e: Exception) {
-            Log.e(TAG, "Connection test failed", e)
+            Log.e(TAG, "History sync failed", e)
             Result.failure(e)
         }
+    }
+
+    private suspend fun saveBookFromServer(serverBook: SyncBookHistory) {
+        val existingBook = bookRepository.getBookByServerIdentifier(serverBook.serverId)
+
+        if (existingBook != null) {
+            val bookId = existingBook.id
+            if (bookId != null) {
+                val updatedBook = existingBook.copy(
+                    title = serverBook.title,
+                    author = serverBook.author,
+                    totalPages = serverBook.totalPages ?: existingBook.totalPages,
+                    currentPage = serverBook.currentPage,
+                    pagesRead = serverBook.currentPage,
+                    readingTime = serverBook.readingTime,
+                    lastReadDate = serverBook.lastReadDate,
+                    lastSynced = System.currentTimeMillis(),
+                    isDeleted = false
+                )
+                bookRepository.updateBook(updatedBook)
+                Log.d(TAG, "Updated book: ${serverBook.title}")
+            } else {
+                Log.w(TAG, "Book has null id: ${serverBook.serverId}")
+            }
+        } else {
+            // Используем конструктор Book без MediaType объекта
+            val newBook = Book(
+                id = null,
+                creation = System.currentTimeMillis(),
+                href = "",
+                title = serverBook.title,
+                author = serverBook.author,
+                identifier = serverBook.serverId,
+                progression = null,
+                rawMediaType = "application/epub+zip",  //直接用 строку
+                cover = "",
+                readingTime = serverBook.readingTime,
+                pagesRead = serverBook.currentPage,
+                currentPage = serverBook.currentPage,
+                totalPages = serverBook.totalPages ?: 0,
+                lastReadDate = serverBook.lastReadDate,
+                isDeleted = false,
+                hasFile = false,
+                lastSynced = System.currentTimeMillis(),
+                serverIdentifier = serverBook.serverId
+            )
+            bookRepository.insertBookWithoutFile(newBook)
+            Log.d(TAG, "Created new book record: ${serverBook.title}")
+        }
+    }
+
+    private suspend fun saveReadingStatFromServer(serverStat: SyncReadingStatHistory) {
+        val book = bookRepository.getBookByServerIdentifier(serverStat.bookServerId)
+        val bookId = book?.id
+        if (bookId == null) {
+            Log.w(TAG, "Book not found for stat: ${serverStat.bookServerId}")
+            return
+        }
+
+        val date = try {
+            LocalDate.parse(serverStat.date)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse date: ${serverStat.date}")
+            return
+        }
+
+        bookRepository.saveReadingStat(bookId, date, serverStat.pagesRead, serverStat.hoursRead)
+        Log.d(TAG, "Saved reading stat for ${serverStat.bookServerId} on $date: ${serverStat.pagesRead} pages")
     }
 
     suspend fun syncAllBooks(username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting sync for user: $username")
-
             val books = bookRepository.books().first()
-            Log.d(TAG, "Found ${books.size} books to sync")
 
             if (books.isEmpty()) {
                 return@withContext Result.success(
@@ -94,47 +197,35 @@ class SyncManager(
                 )
             }
 
-            val syncBooks = mutableListOf<SyncBookDTO>()
-
-            for (book in books) {
+            val syncBooks = books.mapNotNull { book ->
                 try {
-                    val stats = bookRepository.getReadingStatsForBook(book.id!!).first()
-
-                    val syncBook = SyncBookDTO(
+                    val bookId = book.id
+                    if (bookId == null) return@mapNotNull null
+                    val stats = bookRepository.getReadingStatsForBook(bookId).first()
+                    SyncBookDTO(
                         identifier = book.identifier ?: generateBookIdentifier(book),
                         title = book.title ?: "",
                         author = book.author ?: "",
-                        totalPages = null,
+                        totalPages = book.totalPages,
                         language = null,
                         categoryId = null,
                         readingStats = stats.map { stat ->
                             SyncReadingStatDTO(
-                                date = stat.date.toString(), // Преобразуем LocalDate в строку
+                                date = stat.date.toString(),
                                 pagesRead = stat.pagesRead,
                                 hoursRead = stat.hoursRead
                             )
                         }
                     )
-
-                    syncBooks.add(syncBook)
-                    Log.d(TAG, "Prepared book: ${book.title} with ${stats.size} stats records")
-
-                    // Логируем отправляемые данные для отладки
-                    val bookJson = gson.toJson(syncBook)
-                    Log.d(TAG, "Book JSON: $bookJson")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error preparing book ${book.title}", e)
+                    null
                 }
             }
 
             val request = SyncRequestDTO(username, syncBooks)
-            val requestJson = gson.toJson(request)
-            Log.d(TAG, "Sending sync request with ${syncBooks.size} books")
-            Log.d(TAG, "Request JSON: $requestJson")
-
             val response = api.syncData(request)
-            Log.d(TAG, "Sync response: ${gson.toJson(response)}")
-
+            Log.d(TAG, "Sync response success: ${response.success}")
             Result.success(response)
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
@@ -142,46 +233,9 @@ class SyncManager(
         }
     }
 
-    suspend fun syncBook(bookId: Long, username: String = "test"): Result<SyncResponseDTO> = withContext(Dispatchers.IO) {
-        try {
-            val book = bookRepository.get(bookId)
-            if (book == null) {
-                return@withContext Result.failure(Exception("Book not found"))
-            }
-
-            val stats = bookRepository.getReadingStatsForBook(bookId).first()
-
-            val syncBook = SyncBookDTO(
-                identifier = book.identifier ?: generateBookIdentifier(book),
-                title = book.title ?: "",
-                author = book.author ?: "",
-                totalPages = null,
-                language = null,
-                categoryId = null,
-                readingStats = stats.map { stat ->
-                    SyncReadingStatDTO(
-                        date = stat.date.toString(),
-                        pagesRead = stat.pagesRead,
-                        hoursRead = stat.hoursRead
-                    )
-                }
-            )
-
-            val request = SyncRequestDTO(username, listOf(syncBook))
-            val response = api.syncData(request)
-
-            Result.success(response)
-        } catch (e: Exception) {
-            Log.e(TAG, "Sync book failed", e)
-            Result.failure(e)
-        }
-    }
-
     private fun generateBookIdentifier(book: Book): String {
         val title = book.title ?: ""
         val author = book.author ?: ""
-        val identifier = "${title}_${author}_${book.href.hashCode()}".hashCode().toString()
-        Log.d(TAG, "Generated identifier for '${book.title}': $identifier")
-        return identifier
+        return "${title}_${author}_${book.href.hashCode()}".hashCode().toString()
     }
 }

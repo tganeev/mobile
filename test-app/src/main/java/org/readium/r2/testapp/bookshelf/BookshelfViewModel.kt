@@ -1,9 +1,3 @@
-/*
- * Copyright 2021 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.bookshelf
 
 import android.app.Application
@@ -22,8 +16,7 @@ import org.readium.r2.testapp.utils.EventChannel
 
 class BookshelfViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val app get() =
-        getApplication<org.readium.r2.testapp.Application>()
+    private val app get() = getApplication<org.readium.r2.testapp.Application>()
 
     val channel = EventChannel(Channel<Event>(Channel.BUFFERED), viewModelScope)
     val books = app.bookRepository.books()
@@ -32,7 +25,6 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 app.bookRepository.updateBookTitleAndAuthor(bookId, title, author)
-                // Обновляем список книг - refresh
                 app.bookRepository.books().firstOrNull()
                 android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author")
             } catch (e: Exception) {
@@ -41,10 +33,11 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun deletePublication(book: Book) =
-        viewModelScope.launch {
-            app.bookshelf.deleteBook(book)
-        }
+    fun deletePublication(book: Book) = viewModelScope.launch {
+        app.bookshelf.deleteBook(book)
+        // После удаления обновляем список
+        app.bookRepository.books().firstOrNull()
+    }
 
     fun importPublicationFromStorage(uri: Uri) {
         app.bookshelf.importPublicationFromStorage(uri)
@@ -58,9 +51,7 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         app.bookshelf.addPublicationFromWeb(url)
     }
 
-    fun openPublication(
-        bookId: Long,
-    ) {
+    fun openPublication(bookId: Long) {
         viewModelScope.launch {
             app.readerRepository
                 .open(bookId)
@@ -75,13 +66,7 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     sealed class Event {
-
-        class OpenPublicationError(
-            val error: OpeningError,
-        ) : Event()
-
-        class LaunchReader(
-            val arguments: ReaderActivityContract.Arguments,
-        ) : Event()
+        class OpenPublicationError(val error: OpeningError) : Event()
+        class LaunchReader(val arguments: ReaderActivityContract.Arguments) : Event()
     }
 }
