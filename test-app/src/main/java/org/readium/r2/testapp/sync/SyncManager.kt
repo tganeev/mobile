@@ -17,6 +17,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
+import timber.log.Timber
 
 interface SyncApi {
     @POST("/api/sync")
@@ -111,7 +112,15 @@ class SyncManager(
     }
 
     private suspend fun saveBookFromServer(serverBook: SyncBookHistory) {
+        Timber.d("=== SYNC BOOK FROM SERVER ===")
+        Timber.d("Server ID: ${serverBook.serverId}")
+        Timber.d("Title: ${serverBook.title}")
+        Timber.d("Author: ${serverBook.author}")
+        Timber.d("Current page from server: ${serverBook.currentPage}")
+        Timber.d("Reading time: ${serverBook.readingTime}")
+
         val existingBook = bookRepository.getBookByServerIdentifier(serverBook.serverId)
+        Timber.d("Existing book by serverId: ${existingBook?.id}")
 
         if (existingBook != null) {
             val bookId = existingBook.id
@@ -128,12 +137,15 @@ class SyncManager(
                     isDeleted = false
                 )
                 bookRepository.updateBook(updatedBook)
-                Log.d(TAG, "Updated book: ${serverBook.title}")
+
+                // Дополнительно обновляем currentPage через прямой запрос
+                bookRepository.updateCurrentPage(bookId, serverBook.currentPage)
+
+                Timber.d("✅ UPDATED existing book: ${existingBook.id}, currentPage=${serverBook.currentPage}")
             } else {
-                Log.w(TAG, "Book has null id: ${serverBook.serverId}")
+                Timber.w("Book has null id: ${serverBook.serverId}")
             }
         } else {
-            // Используем конструктор Book без MediaType объекта
             val newBook = Book(
                 id = null,
                 creation = System.currentTimeMillis(),
@@ -142,7 +154,7 @@ class SyncManager(
                 author = serverBook.author,
                 identifier = serverBook.serverId,
                 progression = null,
-                rawMediaType = "application/epub+zip",  //直接用 строку
+                rawMediaType = "application/epub+zip",
                 cover = "",
                 readingTime = serverBook.readingTime,
                 pagesRead = serverBook.currentPage,
@@ -154,8 +166,8 @@ class SyncManager(
                 lastSynced = System.currentTimeMillis(),
                 serverIdentifier = serverBook.serverId
             )
-            bookRepository.insertBookWithoutFile(newBook)
-            Log.d(TAG, "Created new book record: ${serverBook.title}")
+            val newId = bookRepository.insertBookWithoutFile(newBook)
+            Timber.d("✅ CREATED new book record with ID: $newId, currentPage=${serverBook.currentPage}")
         }
     }
 
@@ -211,7 +223,7 @@ class SyncManager(
                         categoryId = null,
                         readingStats = stats.map { stat ->
                             SyncReadingStatDTO(
-                                date = stat.date.toString(),
+                                date = stat.date.toString(),  // Преобразуем LocalDate в String
                                 pagesRead = stat.pagesRead,
                                 hoursRead = stat.hoursRead
                             )

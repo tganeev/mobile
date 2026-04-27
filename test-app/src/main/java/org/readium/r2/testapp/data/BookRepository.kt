@@ -23,7 +23,8 @@ class BookRepository(
 ) {
     // ===== ОСНОВНЫЕ МЕТОДЫ =====
 
-    fun books(): Flow<List<Book>> = booksDao.getAllBooks()
+    fun books(): Flow<List<Book>> = booksDao.getBooksWithFile()
+    fun booksForHistory(): Flow<List<Book>> = booksDao.getAllBooksForHistory()
 
     suspend fun get(id: Long) = booksDao.get(id)
 
@@ -233,6 +234,14 @@ class BookRepository(
 
     suspend fun findBooksByTitle(title: String): List<Book> =
         booksDao.findBooksByTitle(title)
+
+    suspend fun getBookByIdentifier(identifier: String): Book? =
+        booksDao.getBookByIdentifier(identifier)
+
+    suspend fun updateCurrentPage(bookId: Long, currentPage: Int) {
+        Timber.d("updateCurrentPage: bookId=$bookId, currentPage=$currentPage")
+        booksDao.updateCurrentPage(bookId, currentPage)
+    }
 
     suspend fun attachFileToExistingBook(
         serverIdentifier: String,

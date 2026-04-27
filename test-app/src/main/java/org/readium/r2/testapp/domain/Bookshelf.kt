@@ -127,58 +127,106 @@ class Bookshelf(
             return
         }
 
-        // 1. Получаем serverIdentifier из метаданных
-        var serverIdentifier = publication.metadata.identifier
+        Timber.d("=== BOOK IMPORT DEBUG ===")
+        Timber.d("Publication title: ${publication.metadata.title}")
+        Timber.d("Publication metadata.identifier: ${publication.metadata.identifier}")
 
-        // 2. Если нет - генерируем из названия + автор
-        if (serverIdentifier.isNullOrBlank()) {
-            val title = publication.metadata.title ?: ""
-            val author = publication.metadata.authors.firstOrNull()?.name ?: ""
-            serverIdentifier = generateServerIdentifier(title, author)
-            Timber.d("Generated serverIdentifier from title+author: $serverIdentifier")
+        val title = publication.metadata.title ?: ""
+        val author = publication.metadata.authors.firstOrNull()?.name ?: ""
+        val identifierFromMetadata = publication.metadata.identifier
+
+        val finalIdentifier = if (!identifierFromMetadata.isNullOrBlank()) {
+            Timber.d("Using ISBN from metadata: $identifierFromMetadata")
+            identifierFromMetadata
+        } else {
+            val generated = generateServerIdentifier(title, author)
+            Timber.d("Generated identifier: $generated")
+            generated
         }
 
-        // 3. Ищем книгу по serverIdentifier
-        val existingBookByIdentifier = bookRepository.findBookByServerIdentifier(serverIdentifier)
+        // 1. Поиск по identifier (ISBN из метаданных)
+        Timber.d("Step 1: Searching by identifier: $finalIdentifier")
+        val existingBook = bookRepository.getBookByIdentifier(finalIdentifier)
 
-        if (existingBookByIdentifier != null) {
-            // 4. Нашли по identifier - обновляем существующую запись
-            Timber.d("Found existing book by serverIdentifier: ${existingBookByIdentifier.id}, linking file")
-
-            bookRepository.attachFileToExistingBook(
-                serverIdentifier = serverIdentifier,
-                href = url.toString(),
-                cover = coverFile.path,
-                mediaType = asset.format.mediaType.toString()
-            )
-
-            val bookId = existingBookByIdentifier.id
+        if (existingBook != null) {
+            val bookId = existingBook.id
             if (bookId != null) {
+                Timber.d("✅ Found by identifier! ID: $bookId, linking file")
+
+                // Сохраняем обложку в постоянное место
+                val permanentCoverPath = saveCoverPermanently(coverFile, bookId)
+
                 bookRepository.updateBook(
-                    existingBookByIdentifier.copy(
+                    existingBook.copy(
                         href = url.toString(),
-                        cover = coverFile.path,
+                        cover = permanentCoverPath,
+                        hasFile = true,
+                        isDeleted = false,
+                        lastSynced = System.currentTimeMillis(),
+                        pagesRead = existingBook.pagesRead,
+                        readingTime = existingBook.readingTime,
+                        currentPage = existingBook.currentPage,  // ← Это важно!
+                        totalPages = existingBook.totalPages,
+                        lastReadDate = existingBook.lastReadDate,
+                        progression = existingBook.progression
+                    )
+                )
+
+                bookRepository.attachFileToBookById(
+                    bookId = bookId,
+                    href = url.toString(),
+                    cover = permanentCoverPath,
+                    mediaType = asset.format.mediaType.toString()
+                )
+
+                coverFile.delete()
+                channel.send(Event.ImportPublicationSuccess)
+                return
+            }
+        }
+
+        // 2. Поиск по serverIdentifier (то, что пришло с сервера)
+        Timber.d("Step 2: Searching by serverIdentifier: $finalIdentifier")
+        val existingByServerId = bookRepository.findBookByServerIdentifier(finalIdentifier)
+
+        if (existingByServerId != null) {
+            val bookId = existingByServerId.id
+            if (bookId != null) {
+                Timber.d("✅ Found by serverIdentifier! ID: $bookId, linking file")
+
+                val permanentCoverPath = saveCoverPermanently(coverFile, bookId)
+
+                bookRepository.updateBook(
+                    existingByServerId.copy(
+                        href = url.toString(),
+                        cover = permanentCoverPath,
                         hasFile = true,
                         isDeleted = false,
                         lastSynced = System.currentTimeMillis()
                     )
                 )
-            }
 
-            coverFile.delete()
-            channel.send(Event.ImportPublicationSuccess)
-            return
+                bookRepository.attachFileToBookById(
+                    bookId = bookId,
+                    href = url.toString(),
+                    cover = permanentCoverPath,
+                    mediaType = asset.format.mediaType.toString()
+                )
+
+                coverFile.delete()
+                channel.send(Event.ImportPublicationSuccess)
+                return
+            }
         }
 
-        // 5. Не нашли по identifier - ищем по названию + автору
-        val title = publication.metadata.title
-        val author = publication.metadata.authors.firstOrNull()?.name
+        // 3. Поиск по названию + автору (показываем диалог)
+        Timber.d("Step 3: Searching by title+author: '$title' '$author'")
 
         if (!title.isNullOrBlank()) {
-            val existingBookByTitle = bookRepository.findBookByTitleAndAuthor(title, author)
+            val existingByTitle = bookRepository.findBookByTitleAndAuthor(title, author)
 
-            if (existingBookByTitle != null) {
-                Timber.d("Found existing book by title+author, need user decision")
+            if (existingByTitle != null) {
+                Timber.d("⚠️ Found by title+author! ID: ${existingByTitle.id}, need user decision")
 
                 val newBookData = NewBookData(
                     url = url,
@@ -188,13 +236,13 @@ class Bookshelf(
                     coverFile = coverFile
                 )
 
-                channel.send(Event.ShowLinkDialog(existingBookByTitle, newBookData))
+                channel.send(Event.ShowLinkDialog(existingByTitle, newBookData))
                 return
             }
         }
 
-        // 7. Ничего не нашли - создаём новую книгу
-        Timber.d("No existing book found, creating new")
+        // 4. Создаём новую книгу
+        Timber.d("❌ No existing book found, creating new")
 
         val bookId = bookRepository.insertBook(
             url,
@@ -216,6 +264,21 @@ class Bookshelf(
         val normalizedTitle = title.lowercase().trim().replace(Regex("[^a-z0-9]"), "")
         val normalizedAuthor = author.lowercase().trim().replace(Regex("[^a-z0-9]"), "")
         return "${normalizedTitle}_${normalizedAuthor}".take(100)
+    }
+
+    private fun saveCoverPermanently(tempCoverFile: File, bookId: Long): String {
+        val coversDir = coverStorage.getCoversDirectory()
+        val permanentFile = File(coversDir, "cover_$bookId.${tempCoverFile.extension}")
+
+        // Если файл уже существует в постоянном месте, удаляем временный
+        if (permanentFile.exists()) {
+            tempCoverFile.delete()
+            return permanentFile.absolutePath
+        }
+
+        // Копируем временный файл в постоянное место
+        tempCoverFile.copyTo(permanentFile, overwrite = true)
+        return permanentFile.absolutePath
     }
 
     suspend fun attachFileToExistingBook(

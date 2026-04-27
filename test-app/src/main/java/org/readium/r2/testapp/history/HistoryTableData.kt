@@ -17,6 +17,7 @@ data class BookProgress(
     val bookId: Long,
     val title: String,
     val author: String,
+    val identifier: String?,
     val status: String,
     val category: String,
     val dailyProgress: Map<LocalDate, Int>,

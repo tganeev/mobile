@@ -177,6 +177,15 @@ interface BooksDao {
     @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.TITLE + " = :title AND " + Book.IS_DELETED + " = 0")
     suspend fun findBooksByTitle(title: String): List<Book>
 
+    @Query("UPDATE books SET current_page = :currentPage WHERE id = :bookId")
+    suspend fun updateCurrentPage(bookId: Long, currentPage: Int)
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.HAS_FILE + " = 1 AND " + Book.IS_DELETED + " = 0 ORDER BY " + Book.CREATION_DATE + " desc")
+    fun getBooksWithFile(): Flow<List<Book>>
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 ORDER BY " + Book.CREATION_DATE + " desc")
+    fun getAllBooksForHistory(): Flow<List<Book>>
+
     @Query(
         "UPDATE " + Book.TABLE_NAME + " SET " +
             "href = :href, " +

@@ -129,7 +129,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun loadHistoryData(startDate: LocalDate, endDate: LocalDate): HistoryTableData {
-        val books = app.bookRepository.books().first()
+        val books = app.bookRepository.booksForHistory().first()
         val allStats = app.bookRepository.getAllReadingStats().first()
 
         val statsInRange = allStats.filter { stat ->
@@ -167,6 +167,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 bookId = bookId,
                 title = book.title ?: "Без названия",
                 author = book.author ?: "",
+                identifier = book.serverIdentifier ?: book.identifier,
                 status = statusText,
                 category = "0.0",
                 dailyProgress = dailyProgress,

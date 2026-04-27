@@ -178,7 +178,7 @@ class ReaderViewModel(
     // ===== СОХРАНЕНИЕ ПРОГРЕССА =====
 
     fun saveProgression(locator: Locator) = viewModelScope.launch {
-        Timber.d("=== SAVE PROGRESSION ===")
+        Timber.d("=== SAVE PROGRESSION CALLED ===")
         Timber.d("bookId: $bookId")
         Timber.d("locator href: ${locator.href}")
         Timber.d("locator position: ${locator.locations.position}")

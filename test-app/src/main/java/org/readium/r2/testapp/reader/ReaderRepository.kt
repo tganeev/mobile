@@ -1,14 +1,9 @@
-/*
- * Copyright 2022 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.reader
 
 import android.app.Application
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences as JetpackPreferences
+import kotlinx.coroutines.flow.firstOrNull
 import org.json.JSONObject
 import org.readium.adapter.exoplayer.audio.ExoPlayerEngineProvider
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
@@ -22,6 +17,7 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.allAreHtml
 import org.readium.r2.shared.publication.services.isRestricted
 import org.readium.r2.shared.publication.services.protectionError
+import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.getOrElse
@@ -34,6 +30,8 @@ import org.readium.r2.testapp.reader.preferences.ExoPlayerPreferencesManagerFact
 import org.readium.r2.testapp.reader.preferences.PdfiumPreferencesManagerFactory
 import org.readium.r2.testapp.utils.CoroutineQueue
 import timber.log.Timber
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
 
 /**
  * Open and store publications in order for them to be listened or read.
@@ -73,6 +71,8 @@ class ReaderRepository(
             return Try.success(Unit)
         }
 
+
+
         val book = checkNotNull(bookRepository.get(bookId)) { "Cannot find book in database." }
 
         val asset = readium.assetRetriever.retrieve(
@@ -107,8 +107,28 @@ class ReaderRepository(
             )
         }
 
-        val initialLocator = book.progression
-            ?.let { Locator.fromJSON(JSONObject(it)) }
+        // ===== ВАЖНО: Получаем сохранённый прогресс из БД =====
+        var initialLocator: Locator? = null
+
+        // 1. Пробуем progression (точная позиция)
+        if (!book.progression.isNullOrBlank() && book.progression != "{}") {
+            try {
+                initialLocator = Locator.fromJSON(JSONObject(book.progression))
+                Timber.d("Loaded from progression: position=${initialLocator?.locations?.position}")
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to parse progression JSON")
+            }
+        }
+
+// 2. Если progression нет, используем pagesRead
+        if (initialLocator == null && book.pagesRead > 0) {
+            initialLocator = createLocatorFromPage(book.pagesRead)
+            Timber.d("Created locator from pagesRead: ${book.pagesRead}")
+        }
+
+        if (initialLocator == null) {
+            Timber.d("No progression or pagesRead found, opening from start")
+        }
 
         val readerInitData = when {
             publication.conformsTo(Publication.Profile.AUDIOBOOK) ->
@@ -134,6 +154,17 @@ class ReaderRepository(
                 mediaServiceFacade.openSession(bookId, it.mediaNavigator)
             }
         }
+    }
+
+    private fun createLocatorFromPage(page: Int): Locator {
+        return Locator(
+            href = AbsoluteUrl("http://localhost")!!,
+            mediaType = MediaType.BINARY,
+            locations = Locator.Locations(
+                position = page,
+                totalProgression = page.toDouble() / 100
+            )
+        )
     }
 
     private suspend fun openAudio(

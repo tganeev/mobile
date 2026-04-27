@@ -45,26 +45,24 @@ class HistoryTableAdapter(
         fixedContainer.removeAllViews()
         dynamicContainer.removeAllViews()
 
-        // ТОЛЬКО ЕСЛИ СТАТИСТИКА ВКЛЮЧЕНА
         if (showStats) {
-            // ИТОГО (стр.)
             fixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
             dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { value ->
                 formatTotalPages(value)
             })
 
-            // ИТОГО (часы)
             fixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
             dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { value ->
                 formatHoursShort(value)
             })
         }
 
-        // Заголовки таблицы (всегда)
+        // ФИКСИРОВАННАЯ ЧАСТЬ - только название книги
         fixedContainer.addView(createFixedHeaderRow())
+
+        // ДИНАМИЧЕСКАЯ ЧАСТЬ - все остальные колонки (включая Identifier)
         dynamicContainer.addView(createDynamicHeaderRow(data.dates))
 
-        // Данные книг (всегда)
         data.books.forEach { book ->
             fixedContainer.addView(createFixedRow(book))
             dynamicContainer.addView(createDynamicRow(book, data.dates))
@@ -73,6 +71,7 @@ class HistoryTableAdapter(
         alignRowHeights(fixedContainer, dynamicContainer)
     }
 
+    // ФИКСИРОВАННАЯ ЧАСТЬ - только заголовок "Название"
     private fun createFixedHeaderRow(): LinearLayout {
         return LinearLayout(fixedColumnLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -84,9 +83,11 @@ class HistoryTableAdapter(
         }
     }
 
+    // ДИНАМИЧЕСКАЯ ЧАСТЬ - заголовки всех остальных колонок
     private fun createDynamicHeaderRow(dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
+            addView(createDynamicCell("Identifier", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Автор", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Статус", 100, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Категория", 80, isHeader = true, gravity = Gravity.CENTER))
@@ -122,7 +123,7 @@ class HistoryTableAdapter(
 
             addView(createMergedCell(
                 text = formatter(totalSum),
-                widthDp = 150 + 100 + 80,
+                widthDp = 150 + 150 + 100 + 80,  // Identifier + Автор + Статус + Категория
                 isTotal = true,
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START,
                 backgroundTransparent = true,
@@ -173,6 +174,7 @@ class HistoryTableAdapter(
         }
     }
 
+    // ФИКСИРОВАННАЯ ЧАСТЬ - только название книги
     private fun createFixedRow(book: BookProgress): LinearLayout {
         return LinearLayout(fixedColumnLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -190,14 +192,21 @@ class HistoryTableAdapter(
         }
     }
 
+    // ДИНАМИЧЕСКАЯ ЧАСТЬ - все остальные данные
     private fun createDynamicRow(book: BookProgress, dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
 
+            // Identifier
+            addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            // Автор
             addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            // Статус
             addView(createDynamicCell(book.status, 100, gravity = Gravity.CENTER))
+            // Категория
             addView(createDynamicCell(book.category, 80, gravity = Gravity.CENTER))
 
+            // Статистика по датам
             dates.forEach { date ->
                 val pages = book.dailyProgress[date] ?: 0
                 val hours = book.dailyTime[date] ?: 0.0

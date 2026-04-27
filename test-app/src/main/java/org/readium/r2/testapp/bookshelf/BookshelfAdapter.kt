@@ -51,7 +51,9 @@ class BookshelfAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(book: Book) {
+            // Отображаем только название книги (без identifier)
             binding.bookshelfTitleText.text = book.title
+
             Picasso.get()
                 .load(File(book.cover))
                 .placeholder(R.drawable.cover)
@@ -108,13 +110,8 @@ class BookshelfAdapter(
         }
 
         private fun showOverlay(book: Book) {
-            // Скрываем предыдущий таймер
             hideRunnable?.let { handler.removeCallbacks(it) }
-
-            // Показываем overlay
             binding.actionOverlay.visibility = View.VISIBLE
-
-            // Автоматически скрываем через 3 секунды
             hideRunnable = Runnable {
                 hideOverlay()
             }

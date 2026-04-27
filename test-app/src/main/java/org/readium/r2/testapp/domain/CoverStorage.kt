@@ -48,6 +48,10 @@ class CoverStorage(
             }
         }
 
+    fun getCoversDirectory(): File {
+        return coverDir()
+    }
+
     private suspend fun HttpClient.fetchBitmap(request: HttpRequest): Try<Bitmap, HttpError> =
         fetchWithDecoder(request) { response ->
             BitmapFactory.decodeByteArray(response.body, 0, response.body.size)
