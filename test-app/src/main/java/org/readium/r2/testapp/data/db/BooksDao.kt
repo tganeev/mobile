@@ -51,11 +51,11 @@ interface BooksDao {
     )
     suspend fun saveProgression(locator: String, id: Long)
 
-    // Методы для работы с закладками
+    // ===== МЕТОДЫ ДЛЯ ЗАКЛАДОК =====
     @Query("SELECT * FROM " + Bookmark.TABLE_NAME + " WHERE " + Bookmark.BOOK_ID + " = :bookId")
     fun getBookmarksForBook(bookId: Long): Flow<List<Bookmark>>
 
-    // Методы для работы с подсветками
+    // ===== МЕТОДЫ ДЛЯ ПОДСВЕТОК =====
     @Query(
         "SELECT * FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.BOOK_ID} = :bookId ORDER BY ${Highlight.TOTAL_PROGRESSION} ASC"
     )
@@ -86,18 +86,15 @@ interface BooksDao {
     @Query("DELETE FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.ID} = :id")
     suspend fun deleteHighlight(id: Long)
 
-    // Методы для работы со статистикой чтения
+    // ===== МЕТОДЫ ДЛЯ СТАТИСТИКИ ЧТЕНИЯ =====
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId ORDER BY date ASC")
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>>
-
-
 
     @Query("SELECT * FROM reading_stats ORDER BY date ASC")
     fun getAllReadingStats(): Flow<List<ReadingStat>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReadingStat(stat: ReadingStat)
-
 
     @Query("DELETE FROM reading_stats WHERE book_id = :bookId AND date = :date")
     suspend fun deleteReadingStat(bookId: Long, date: String)
@@ -135,8 +132,7 @@ interface BooksDao {
         pagesToAdd: Int,
     )
 
-    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ И ВОССТАНОВЛЕНИЯ =====
-
+    // ===== МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ И ВОССТАНОВЛЕНИЯ =====
     @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.IS_DELETED + " = 1 WHERE " + Book.ID + " = :id")
     suspend fun softDeleteBook(id: Long)
 
@@ -169,4 +165,49 @@ interface BooksDao {
 
     @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 OR " + Book.HAS_FILE + " = 0")
     suspend fun getAllBooksForSync(): List<Book>
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier AND " + Book.IS_DELETED + " = 0")
+    suspend fun findBookByServerIdentifier(serverIdentifier: String): Book?
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.TITLE + " = :title AND " + Book.AUTHOR + " = :author AND " + Book.IS_DELETED + " = 0")
+    suspend fun findBookByTitleAndAuthor(title: String, author: String?): Book?
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.TITLE + " = :title AND " + Book.IS_DELETED + " = 0")
+    suspend fun findBooksByTitle(title: String): List<Book>
+
+    @Query(
+        "UPDATE " + Book.TABLE_NAME + " SET " +
+            "href = :href, " +
+            "cover = :cover, " +
+            "media_type = :mediaType, " +
+            "has_file = 1, " +
+            "is_deleted = 0, " +
+            "last_synced = :lastSynced " +
+            " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier"
+    )
+    suspend fun attachFileToExistingBook(
+        serverIdentifier: String,
+        href: String,
+        cover: String,
+        mediaType: String,
+        lastSynced: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        "UPDATE " + Book.TABLE_NAME + " SET " +
+            "has_file = 1, " +
+            "is_deleted = 0, " +
+            "href = :href, " +
+            "cover = :cover, " +
+            "media_type = :mediaType " +
+            " WHERE " + Book.ID + " = :bookId"
+    )
+    suspend fun attachFileToBookById(
+        bookId: Long,
+        href: String,
+        cover: String,
+        mediaType: String
+    )
 }

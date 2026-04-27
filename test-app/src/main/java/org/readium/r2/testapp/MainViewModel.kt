@@ -41,6 +41,10 @@ class MainViewModel(
             Bookshelf.Event.ImportPublicationSuccess -> {
                 channel.send(Event.ImportPublicationSuccess)
             }
+            is Bookshelf.Event.ShowLinkDialog -> {
+                // Диалог показывается в BookshelfFragment, здесь ничего не делаем
+                // Но ветка должна быть для exhaustive when
+            }
         }
     }
 

@@ -90,7 +90,7 @@ class BookRepository(
 
     suspend fun deleteBook(id: Long) = booksDao.deleteBook(id)
 
-    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ =====
+    // ===== МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ =====
 
     suspend fun softDeleteBook(bookId: Long) = booksDao.softDeleteBook(bookId)
 
@@ -222,4 +222,29 @@ class BookRepository(
         booksDao.updateHighlightStyle(id, style, tint)
 
     suspend fun deleteHighlight(id: Long) = booksDao.deleteHighlight(id)
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
+
+    suspend fun findBookByServerIdentifier(serverIdentifier: String): Book? =
+        booksDao.findBookByServerIdentifier(serverIdentifier)
+
+    suspend fun findBookByTitleAndAuthor(title: String, author: String?): Book? =
+        booksDao.findBookByTitleAndAuthor(title, author)
+
+    suspend fun findBooksByTitle(title: String): List<Book> =
+        booksDao.findBooksByTitle(title)
+
+    suspend fun attachFileToExistingBook(
+        serverIdentifier: String,
+        href: String,
+        cover: String,
+        mediaType: String
+    ) = booksDao.attachFileToExistingBook(serverIdentifier, href, cover, mediaType)
+
+    suspend fun attachFileToBookById(
+        bookId: Long,
+        href: String,
+        cover: String,
+        mediaType: String
+    ) = booksDao.attachFileToBookById(bookId, href, cover, mediaType)
 }

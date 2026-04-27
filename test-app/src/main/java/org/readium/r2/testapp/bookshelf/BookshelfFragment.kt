@@ -29,7 +29,13 @@ import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.databinding.FragmentBookshelfBinding
 import org.readium.r2.testapp.opds.GridAutoFitLayoutManager
 import org.readium.r2.testapp.reader.ReaderActivityContract
+import org.readium.r2.testapp.utils.LinkBookDialogFragment
 import org.readium.r2.testapp.utils.viewLifecycle
+
+import kotlinx.coroutines.flow.consumeAsFlow
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.receiveAsFlow
+
 
 class BookshelfFragment : Fragment() {
 
@@ -174,6 +180,12 @@ class BookshelfFragment : Fragment() {
                 }
                 .show()
         }
+
+        lifecycleScope.launch {
+            app.bookshelf.channel.receiveAsFlow().collect { event ->
+                handleBookshelfEvent(event)
+            }
+        }
     }
 
     @OptIn(DelicateReadiumApi::class)
@@ -209,6 +221,40 @@ class BookshelfFragment : Fragment() {
                 )
                 startActivity(intent)
             }
+        }
+    }
+
+    // ДОБАВИТЬ НОВЫЙ МЕТОД ДЛЯ ОБРАБОТКИ СОБЫТИЙ ИЗ BOOKSHELF
+    private fun handleBookshelfEvent(event: org.readium.r2.testapp.domain.Bookshelf.Event) {
+        when (event) {
+            is org.readium.r2.testapp.domain.Bookshelf.Event.ShowLinkDialog -> {
+                val dialog = LinkBookDialogFragment.newInstance(event.existingBook)
+                dialog.setOnLinkConfirmed {
+                    lifecycleScope.launch {
+                        app.bookshelf.attachFileToExistingBook(
+                            serverIdentifier = event.existingBook.serverIdentifier ?: "",
+                            href = event.newBookData.url.toString(),
+                            cover = event.newBookData.coverFile.path,
+                            mediaType = event.newBookData.format?.mediaType?.toString() ?: ""
+                        )
+                        app.bookshelf.refreshBooks()
+                        lifecycleScope.launch {
+                            bookshelfViewModel.books.collect {
+                                bookshelfAdapter.submitList(it)
+                            }
+                        }
+                    }
+                    dialog.dismiss()
+                }
+                dialog.setOnCreateNewConfirmed {
+                    lifecycleScope.launch {
+                        app.bookshelf.addPublicationFromStorage(event.newBookData.url)
+                    }
+                    dialog.dismiss()
+                }
+                dialog.show(childFragmentManager, "LinkBookDialog")
+            }
+            else -> { /* другие события не обрабатываем */ }
         }
     }
 
