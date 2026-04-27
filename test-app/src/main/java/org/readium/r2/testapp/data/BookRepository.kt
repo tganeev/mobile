@@ -1,5 +1,6 @@
 package org.readium.r2.testapp.data
 
+import android.util.Log
 import androidx.annotation.ColorInt
 import java.io.File
 import java.time.LocalDate
@@ -8,6 +9,7 @@ import org.joda.time.DateTime
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.indexOfFirstWithHref
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.testapp.data.db.BooksDao
@@ -70,6 +72,9 @@ class BookRepository(
         publication: Publication,
         cover: File,
     ): Long {
+        val totalPages = publication.positions().size
+        Log.d("BookRepository", "insertBook: totalPages = $totalPages")
+
         val book = Book(
             creation = DateTime().toDate().time,
             title = publication.metadata.title ?: url.filename,
@@ -82,7 +87,7 @@ class BookRepository(
             readingTime = 0,
             pagesRead = 0,
             currentPage = 0,
-            totalPages = 0,
+            totalPages = totalPages,  // ← Убедитесь, что эта строка есть
             lastReadDate = null,
             serverIdentifier = publication.metadata.identifier
         )

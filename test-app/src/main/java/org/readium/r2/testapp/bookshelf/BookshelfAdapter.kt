@@ -15,6 +15,7 @@ import java.util.*
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.databinding.ItemRecycleBookBinding
+import timber.log.Timber
 
 class BookshelfAdapter(
     private val onBookClick: (Book) -> Unit,
@@ -51,7 +52,6 @@ class BookshelfAdapter(
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(book: Book) {
-            // Отображаем только название книги (без identifier)
             binding.bookshelfTitleText.text = book.title
 
             Picasso.get()
@@ -59,17 +59,19 @@ class BookshelfAdapter(
                 .placeholder(R.drawable.cover)
                 .into(binding.bookshelfCoverImage)
 
-            // Отображаем статистику
             binding.readingStatsLayout.visibility = View.VISIBLE
 
-            // Форматируем время чтения
             val readingTimeText = formatReadingTime(book.readingTime)
             binding.readingTimeText.text = "⏱️ $readingTimeText"
 
-            // Отображаем количество страниц
-            binding.pagesReadText.text = "📄 ${book.pagesRead} стр."
+            // Новый формат отображения страниц
+            val pagesText = if (book.totalPages > 0) {
+                "📄 ${book.pagesRead}стр / ${book.totalPages}стр"
+            } else {
+                "📄 ${book.pagesRead}стр"
+            }
+            binding.pagesReadText.text = pagesText
 
-            // Если книга была открыта, показываем дату последнего чтения
             book.lastReadDate?.let { date ->
                 val lastReadText = formatLastReadDate(date)
                 binding.lastReadText.text = "🕒 $lastReadText"
@@ -78,16 +80,15 @@ class BookshelfAdapter(
                 binding.lastReadText.visibility = View.GONE
             }
 
-            // Скрываем overlay по умолчанию
             binding.actionOverlay.visibility = View.GONE
 
-            // Обработка долгого нажатия - показываем overlay
             binding.root.setOnLongClickListener {
                 showOverlay(book)
                 true
             }
 
-            // Клик по карточке - открыть книгу (только если overlay не виден)
+            Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
+            Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
             binding.root.setOnClickListener {
                 if (binding.actionOverlay.visibility == View.VISIBLE) {
                     hideOverlay()
@@ -96,13 +97,11 @@ class BookshelfAdapter(
                 }
             }
 
-            // Кнопка редактирования
             binding.btnEdit.setOnClickListener {
                 hideOverlay()
                 onEditBookClick?.invoke(book)
             }
 
-            // Кнопка удаления
             binding.btnDelete.setOnClickListener {
                 hideOverlay()
                 onBookLongClick(book)

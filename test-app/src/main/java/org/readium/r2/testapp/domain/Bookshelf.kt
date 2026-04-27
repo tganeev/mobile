@@ -8,6 +8,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
@@ -166,9 +167,10 @@ class Bookshelf(
                         pagesRead = existingBook.pagesRead,
                         readingTime = existingBook.readingTime,
                         currentPage = existingBook.currentPage,  // ← Это важно!
-                        totalPages = existingBook.totalPages,
+                        totalPages = existingBook.totalPages.takeIf { it > 0 } ?: publication.positions().size,
                         lastReadDate = existingBook.lastReadDate,
-                        progression = existingBook.progression
+                        progression = existingBook.progression,
+
                     )
                 )
 
