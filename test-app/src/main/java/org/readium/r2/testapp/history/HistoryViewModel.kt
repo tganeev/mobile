@@ -41,6 +41,10 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private val _filteredTableData = MutableStateFlow<HistoryTableData?>(null)
     val filteredTableData: StateFlow<HistoryTableData?> = _filteredTableData.asStateFlow()
 
+    val currentStartDate: LocalDate get() = _periodRange.value.first
+    val currentEndDate: LocalDate get() = _periodRange.value.second
+
+
     init {
         viewModelScope.launch {
             combine(

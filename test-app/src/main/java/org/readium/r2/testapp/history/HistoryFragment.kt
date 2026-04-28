@@ -20,6 +20,14 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentHistoryBinding
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
+
+import android.app.DatePickerDialog
+import java.time.LocalDate
+import java.time.YearMonth
+
+
+
 
 class HistoryFragment : Fragment() {
 
@@ -103,9 +111,57 @@ class HistoryFragment : Fragment() {
         }
 
         binding.calendarButton.setOnClickListener {
-            Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_LONG).show()
+            showDateRangePicker()
         }
     }
+
+    private fun showDateRangePicker() {
+        val currentStart = viewModel.currentStartDate
+        val currentEnd = viewModel.currentEndDate
+
+        // Создаём диалог выбора начальной даты
+        val calendar = Calendar.getInstance()
+        calendar.set(currentStart.year, currentStart.monthValue - 1, currentStart.dayOfMonth)
+
+        DatePickerDialog(
+            requireContext(),
+            { _, year, month, day ->
+                val startDate = LocalDate.of(year, month + 1, day)
+                showEndDatePicker(startDate)
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            setTitle("Выберите начальную дату")
+        }.show()
+    }
+
+    private fun showEndDatePicker(startDate: LocalDate) {
+        val currentEnd = viewModel.currentEndDate
+
+        val calendar = Calendar.getInstance()
+        calendar.set(currentEnd.year, currentEnd.monthValue - 1, currentEnd.dayOfMonth)
+
+        DatePickerDialog(
+            requireContext(),
+            { _, year, month, day ->
+                val endDate = LocalDate.of(year, month + 1, day)
+                if (endDate.isBefore(startDate)) {
+                    Snackbar.make(binding.root, "Конечная дата не может быть раньше начальной", Snackbar.LENGTH_LONG).show()
+                } else {
+                    viewModel.loadDataForRange(startDate, endDate)
+                }
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            setTitle("Выберите конечную дату")
+        }.show()
+    }
+
+
 
     private fun setupSearch() {
         binding.searchInput.addTextChangedListener(object : TextWatcher {
