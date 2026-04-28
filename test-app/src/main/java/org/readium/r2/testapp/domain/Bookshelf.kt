@@ -153,10 +153,10 @@ class Bookshelf(
             val bookId = existingBook.id
             if (bookId != null) {
                 Timber.d("✅ Found by identifier! ID: $bookId, linking file")
-
-                // Сохраняем обложку в постоянное место
                 val permanentCoverPath = saveCoverPermanently(coverFile, bookId)
 
+                // ✅ ИСПРАВЛЕНИЕ: Сбрасываем локацию и текущую страницу, т.к. они несовместимы с новым файлом.
+                // Статистика чтения (pagesRead, readingTime) сохраняется.
                 bookRepository.updateBook(
                     existingBook.copy(
                         href = url.toString(),
@@ -164,23 +164,20 @@ class Bookshelf(
                         hasFile = true,
                         isDeleted = false,
                         lastSynced = System.currentTimeMillis(),
-                        pagesRead = existingBook.pagesRead,
-                        readingTime = existingBook.readingTime,
-                        currentPage = existingBook.currentPage,  // ← Это важно!
-                        totalPages = existingBook.totalPages.takeIf { it > 0 } ?: publication.positions().size,
+                        pagesRead = existingBook.pagesRead,      // Оставляем историю
+                        readingTime = existingBook.readingTime,  // Оставляем историю
+                        currentPage = 0,                         // ⬅️ СБРОС: начинаем с начала
+                        totalPages = publication.positions().size, // ⬅️ БЕРЁМ из нового файла
                         lastReadDate = existingBook.lastReadDate,
-                        progression = existingBook.progression,
-
+                        progression = "{}",                      // ⬅️ СБРОС: убираем невалидный CFI
                     )
                 )
-
                 bookRepository.attachFileToBookById(
                     bookId = bookId,
                     href = url.toString(),
                     cover = permanentCoverPath,
                     mediaType = asset.format.mediaType.toString()
                 )
-
                 coverFile.delete()
                 channel.send(Event.ImportPublicationSuccess)
                 return

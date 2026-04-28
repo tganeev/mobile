@@ -16,6 +16,7 @@ import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.allAreHtml
 import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.protectionError
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.DebugError
@@ -122,8 +123,17 @@ class ReaderRepository(
 
 // 2. Если progression нет, используем pagesRead
         if (initialLocator == null && book.pagesRead > 0) {
-            initialLocator = createLocatorFromPage(book.pagesRead)
-            Timber.d("Created locator from pagesRead: ${book.pagesRead}")
+            try {
+                val positions = publication.positions()
+                if (positions.isNotEmpty()) {
+                    // pagesRead начинается с 1, а список позиций индексируется с 0
+                    val targetIndex = (book.pagesRead - 1).coerceIn(0, positions.size - 1)
+                    initialLocator = positions[targetIndex]
+                    Timber.d("Mapped pagesRead ${book.pagesRead} to position ${targetIndex + 1} / ${positions.size}")
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to map pagesRead to positions")
+            }
         }
 
         if (initialLocator == null) {

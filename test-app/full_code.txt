@@ -1,7 +1,7 @@
 ================================================================================
 ПОЛНЫЙ ИСХОДНЫЙ КОД ANDROID STUDIO ПРОЕКТА
 ================================================================================
-Дата создания: Tue Apr 28 05:37:46 PM +05 2026
+Дата создания: Tue Apr 28 08:26:04 PM +05 2026
 Директория проекта: /opt/goinfre/kindlyfr/Projects/pkms/mobile/test-app
 ================================================================================
 
@@ -398,6 +398,7 @@ class MainActivity : AppCompatActivity() {
 
 package org.readium.r2.testapp.bookshelf
 
+import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -428,10 +429,7 @@ class BookshelfAdapter(
         onEditBookClick = listener
     }
 
-    override fun onCreateViewHolder(
-        parent: ViewGroup,
-        viewType: Int,
-    ): ViewHolder {
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         return ViewHolder(
             ItemRecycleBookBinding.inflate(
                 LayoutInflater.from(parent.context),
@@ -451,14 +449,12 @@ class BookshelfAdapter(
 
         fun bind(book: Book) {
             binding.bookshelfTitleText.text = book.title
-
             Picasso.get()
                 .load(File(book.cover))
                 .placeholder(R.drawable.cover)
                 .into(binding.bookshelfCoverImage)
 
             binding.readingStatsLayout.visibility = View.VISIBLE
-
             val readingTimeText = formatReadingTime(book.readingTime)
             binding.readingTimeText.text = "⏱️ $readingTimeText"
 
@@ -478,6 +474,36 @@ class BookshelfAdapter(
                 binding.lastReadText.visibility = View.GONE
             }
 
+            // --- ЛОГИКА СТАТУСА ---
+            val statusText: String
+            val statusColor: Int
+
+            if (book.totalPages > 0) {
+                val progress = (book.pagesRead.toDouble() / book.totalPages) * 100
+                if (progress >= 100) {
+                    statusText = "✅ Прочитано"
+                    statusColor = Color.parseColor("#4CAF50") // Зеленый
+                } else if (progress > 0) {
+                    statusText = "📖 В процессе (${progress.toInt()}%)"
+                    statusColor = Color.parseColor("#FFC107") // Желтый/Оранжевый
+                } else {
+                    statusText = "📚 Не начато"
+                    statusColor = Color.parseColor("#9E9E9E") // Серый
+                }
+            } else {
+                // Если страниц не указано
+                if (book.pagesRead > 0) {
+                    statusText = "📖 В процессе"
+                    statusColor = Color.parseColor("#FFC107")
+                } else {
+                    statusText = "📚 Не начато"
+                    statusColor = Color.parseColor("#9E9E9E")
+                }
+            }
+            binding.bookshelfStatusText.text = statusText
+            binding.bookshelfStatusText.setTextColor(statusColor)
+            // ----------------------
+
             binding.actionOverlay.visibility = View.GONE
 
             binding.root.setOnLongClickListener {
@@ -486,7 +512,7 @@ class BookshelfAdapter(
             }
 
             Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
-            Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
+
             binding.root.setOnClickListener {
                 if (binding.actionOverlay.visibility == View.VISIBLE) {
                     hideOverlay()
@@ -494,12 +520,10 @@ class BookshelfAdapter(
                     onBookClick(book)
                 }
             }
-
             binding.btnEdit.setOnClickListener {
                 hideOverlay()
                 onEditBookClick?.invoke(book)
             }
-
             binding.btnDelete.setOnClickListener {
                 hideOverlay()
                 onBookLongClick(book)
@@ -523,7 +547,6 @@ class BookshelfAdapter(
         private fun formatReadingTime(seconds: Long): String {
             val hours = seconds / 3600
             val minutes = (seconds % 3600) / 60
-
             return when {
                 hours > 0 -> "${hours}ч ${minutes}мин"
                 minutes > 0 -> "${minutes}мин"
@@ -536,7 +559,6 @@ class BookshelfAdapter(
             val now = Date()
             val diff = now.time - date.time
             val days = diff / (24 * 60 * 60 * 1000)
-
             return when {
                 days == 0L -> "сегодня"
                 days == 1L -> "вчера"
@@ -545,28 +567,21 @@ class BookshelfAdapter(
             }
         }
     }
+}
 
-    private class BookListDiff : DiffUtil.ItemCallback<Book>() {
+private class BookListDiff : DiffUtil.ItemCallback<Book>() {
+    override fun areItemsTheSame(oldItem: Book, newItem: Book): Boolean {
+        return oldItem.id == newItem.id
+    }
 
-        override fun areItemsTheSame(
-            oldItem: Book,
-            newItem: Book,
-        ): Boolean {
-            return oldItem.id == newItem.id
-        }
-
-        override fun areContentsTheSame(
-            oldItem: Book,
-            newItem: Book,
-        ): Boolean {
-            return oldItem.title == newItem.title &&
-                oldItem.href == newItem.href &&
-                oldItem.author == newItem.author &&
-                oldItem.identifier == newItem.identifier &&
-                oldItem.readingTime == newItem.readingTime &&
-                oldItem.pagesRead == newItem.pagesRead &&
-                oldItem.lastReadDate == newItem.lastReadDate
-        }
+    override fun areContentsTheSame(oldItem: Book, newItem: Book): Boolean {
+        return oldItem.title == newItem.title &&
+            oldItem.href == newItem.href &&
+            oldItem.author == newItem.author &&
+            oldItem.identifier == newItem.identifier &&
+            oldItem.readingTime == newItem.readingTime &&
+            oldItem.pagesRead == newItem.pagesRead &&
+            oldItem.lastReadDate == newItem.lastReadDate
     }
 }
 
@@ -9439,68 +9454,74 @@ import java.time.format.DateTimeFormatter
 class HistoryTableAdapter(
     private val onBookClick: (Long) -> Unit
 ) {
-
     private val dateFormatter = DateTimeFormatter.ofPattern("dd.MM")
     private var data: HistoryTableData? = null
     private var fixedColumnLayout: LinearLayout? = null
     private var dynamicColumnsLayout: LinearLayout? = null
 
-    private val rowHeightPx: Int by lazy {
-        dpToPx(60)
-    }
+    // Контейнеры для фиксированного заголовка
+    private var headerFixedColumnLayout: LinearLayout? = null
+    private var headerDynamicColumnsLayout: LinearLayout? = null
+
+    private var showStats = true
+    private val rowHeightPx: Int by lazy { dpToPx(60) }
 
     fun setData(
         data: HistoryTableData,
         fixedContainer: LinearLayout,
         dynamicContainer: LinearLayout,
+        headerFixedContainer: LinearLayout,
+        headerDynamicContainer: LinearLayout,
         showStats: Boolean = true
     ) {
         this.data = data
         this.fixedColumnLayout = fixedContainer
         this.dynamicColumnsLayout = dynamicContainer
+        this.headerFixedColumnLayout = headerFixedContainer
+        this.headerDynamicColumnsLayout = headerDynamicContainer
         this.showStats = showStats
         render()
     }
-
-    private var showStats = true
 
     private fun render() {
         val data = this.data ?: return
         val fixedContainer = fixedColumnLayout ?: return
         val dynamicContainer = dynamicColumnsLayout ?: return
+        val headerFixedContainer = headerFixedColumnLayout ?: return
+        val headerDynamicContainer = headerDynamicColumnsLayout ?: return
 
         fixedContainer.removeAllViews()
         dynamicContainer.removeAllViews()
+        headerFixedContainer.removeAllViews()
+        headerDynamicContainer.removeAllViews()
 
+        // 1. Сначала добавляем строки статистики/итогов В ЗАГОЛОВОК (над названиями колонок)
         if (showStats) {
-            fixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
-            dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { value ->
-                formatTotalPages(value)
-            })
+            headerFixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
+            headerDynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { formatTotalPages(it) })
 
-            fixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
-            dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { value ->
-                formatHoursShort(value)
-            })
+            headerFixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
+            headerDynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { formatHoursShort(it) })
         }
 
-        // ФИКСИРОВАННАЯ ЧАСТЬ - только название книги
-        fixedContainer.addView(createFixedHeaderRow())
+        // 2. Затем добавляем сами заголовки колонок
+        headerFixedContainer.addView(createFixedHeaderRow())
+        headerDynamicContainer.addView(createDynamicHeaderRow(data.dates))
 
-        // ДИНАМИЧЕСКАЯ ЧАСТЬ - все остальные колонки (включая Identifier)
-        dynamicContainer.addView(createDynamicHeaderRow(data.dates))
-
+        // 3. Данные книг добавляются в прокручиваемую часть
         data.books.forEach { book ->
             fixedContainer.addView(createFixedRow(book))
             dynamicContainer.addView(createDynamicRow(book, data.dates))
         }
 
+        // Синхронизируем высоты строк внутри каждого блока отдельно
+        alignRowHeights(headerFixedContainer, headerDynamicContainer)
         alignRowHeights(fixedContainer, dynamicContainer)
     }
 
     // ФИКСИРОВАННАЯ ЧАСТЬ - только заголовок "Название"
     private fun createFixedHeaderRow(): LinearLayout {
-        return LinearLayout(fixedColumnLayout!!.context).apply {
+        return LinearLayout(headerFixedColumnLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(createFixedCell("Название", 200, isHeader = true, gravity = Gravity.CENTER))
             layoutParams = LinearLayout.LayoutParams(
@@ -9512,7 +9533,7 @@ class HistoryTableAdapter(
 
     // ДИНАМИЧЕСКАЯ ЧАСТЬ - заголовки всех остальных колонок
     private fun createDynamicHeaderRow(dates: List<LocalDate>): LinearLayout {
-        return LinearLayout(dynamicColumnsLayout!!.context).apply {
+        return LinearLayout(headerDynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(createDynamicCell("Identifier", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Автор", 150, isHeader = true, gravity = Gravity.CENTER))
@@ -9529,7 +9550,7 @@ class HistoryTableAdapter(
     }
 
     private fun createTotalFixedRow(title: String): LinearLayout {
-        return LinearLayout(fixedColumnLayout!!.context).apply {
+        return LinearLayout(headerFixedColumnLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(createFixedCell(title, 200, isTotal = true, gravity = Gravity.CENTER_VERTICAL or Gravity.START, backgroundTransparent = true, textBlack = true))
             layoutParams = LinearLayout.LayoutParams(
@@ -9545,24 +9566,21 @@ class HistoryTableAdapter(
         totalSum: Double,
         formatter: (Double) -> String
     ): LinearLayout {
-        return LinearLayout(dynamicColumnsLayout!!.context).apply {
+        return LinearLayout(headerDynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-
             addView(createMergedCell(
                 text = formatter(totalSum),
-                widthDp = 150 + 150 + 100 + 80,  // Identifier + Автор + Статус + Категория
+                widthDp = 150 + 150 + 100 + 80,
                 isTotal = true,
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START,
                 backgroundTransparent = true,
                 textBlack = true
             ))
-
             dates.forEach { date ->
                 val value = totalsByDate[date] ?: 0.0
                 val displayText = if (value > 0) formatter(value) else "—"
                 addView(createDynamicCell(displayText, 80, isTotal = true, gravity = Gravity.CENTER, backgroundTransparent = true, textBlack = true))
             }
-
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 rowHeightPx
@@ -9578,25 +9596,22 @@ class HistoryTableAdapter(
         backgroundTransparent: Boolean = false,
         textBlack: Boolean = false
     ): TextView {
-        return TextView(dynamicColumnsLayout!!.context).apply {
+        return TextView(headerDynamicColumnsLayout!!.context).apply {
             this.text = text
             setPadding(12, 12, 12, 12)
             textSize = 14f
             this.gravity = gravity
             maxLines = 1
-
             if (backgroundTransparent) {
                 setBackgroundColor(Color.TRANSPARENT)
-                if (textBlack) setTextColor(Color.BLACK)
+                if (textBlack) setTextColor(Color.parseColor("#00FF41"))
             } else if (isTotal) {
                 setBackgroundColor(Color.parseColor("#757575"))
                 setTextColor(Color.WHITE)
             }
-
             if (isTotal && !textBlack && !backgroundTransparent) {
                 setTypeface(null, android.graphics.Typeface.BOLD)
             }
-
             layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
         }
     }
@@ -9623,25 +9638,14 @@ class HistoryTableAdapter(
     private fun createDynamicRow(book: BookProgress, dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-
-            // Identifier
             addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
-            // Автор
             addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER))
-            // Статус
             addView(createDynamicCell(book.status, 100, gravity = Gravity.CENTER))
-            // Категория
             addView(createDynamicCell(book.category, 80, gravity = Gravity.CENTER))
-
-            // Статистика по датам
             dates.forEach { date ->
                 val pages = book.dailyProgress[date] ?: 0
                 val hours = book.dailyTime[date] ?: 0.0
-                val displayText = if (pages > 0) {
-                    "${pages} стр\n${formatHoursShort(hours)}"
-                } else {
-                    "—"
-                }
+                val displayText = if (pages > 0) "${pages} стр\n${formatHoursShort(hours)}" else "—"
                 addView(createDynamicCell(displayText, 80, isMultiLine = true, gravity = Gravity.CENTER))
             }
             layoutParams = LinearLayout.LayoutParams(
@@ -9668,16 +9672,15 @@ class HistoryTableAdapter(
             textSize = 14f
             this.gravity = gravity
             maxLines = 1
-
             when {
                 isHeader -> {
                     setTextColor(Color.WHITE)
-                    setBackgroundColor(resources.getColor(R.color.purple_500, null))
+                    setBackgroundColor(resources.getColor(R.color.purple_501, null))
                     setTypeface(null, android.graphics.Typeface.BOLD)
                 }
                 backgroundTransparent -> {
                     setBackgroundColor(Color.TRANSPARENT)
-                    if (textBlack) setTextColor(Color.BLACK)
+                    if (textBlack) setTextColor(Color.parseColor("#00FF41"))
                 }
                 isTotal -> {
                     setTextColor(Color.WHITE)
@@ -9688,12 +9691,10 @@ class HistoryTableAdapter(
                     setBackgroundColor(Color.TRANSPARENT)
                 }
             }
-
             if (isClickable && onClick != null) {
                 setOnClickListener { onClick() }
-                setTextColor(resources.getColor(R.color.purple_500, null))
+                setTextColor(resources.getColor(R.color.purple_501, null))
             }
-
             layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
         }
     }
@@ -9716,16 +9717,15 @@ class HistoryTableAdapter(
             textSize = if (isMultiLine) 11f else 13f
             this.gravity = gravity
             maxLines = if (isMultiLine) 2 else 1
-
             when {
                 isHeader -> {
                     setTextColor(Color.WHITE)
-                    setBackgroundColor(resources.getColor(R.color.purple_500, null))
+                    setBackgroundColor(resources.getColor(R.color.purple_501, null))
                     setTypeface(null, android.graphics.Typeface.BOLD)
                 }
                 backgroundTransparent -> {
                     setBackgroundColor(Color.TRANSPARENT)
-                    if (textBlack) setTextColor(Color.BLACK)
+                    if (textBlack) setTextColor(Color.parseColor("#00FF41"))
                 }
                 isTotal -> {
                     setTextColor(Color.WHITE)
@@ -9734,14 +9734,13 @@ class HistoryTableAdapter(
                 }
                 else -> {
                     setBackgroundColor(Color.TRANSPARENT)
+                    setTextColor(Color.parseColor("#00CC00"))
                 }
             }
-
             if (isClickable && onClick != null) {
                 setOnClickListener { onClick() }
                 setTextColor(resources.getColor(R.color.purple_500, null))
             }
-
             layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
         }
     }
@@ -9767,31 +9766,25 @@ class HistoryTableAdapter(
         fixedContainer.post {
             val fixedChildren = fixedContainer.children.toList()
             val dynamicChildren = dynamicContainer.children.toList()
-
             val minSize = minOf(fixedChildren.size, dynamicChildren.size)
             for (i in 0 until minSize) {
                 val fixedChild = fixedChildren[i] as? LinearLayout ?: continue
                 val dynamicChild = dynamicChildren[i] as? LinearLayout ?: continue
-
                 var maxHeight = rowHeightPx
-
                 for (j in 0 until fixedChild.childCount) {
                     val view = fixedChild.getChildAt(j)
                     maxHeight = maxOf(maxHeight, view.height)
                 }
-
                 for (j in 0 until dynamicChild.childCount) {
                     val view = dynamicChild.getChildAt(j)
                     maxHeight = maxOf(maxHeight, view.height)
                 }
-
                 for (j in 0 until fixedChild.childCount) {
                     fixedChild.getChildAt(j).layoutParams.height = maxHeight
                 }
                 for (j in 0 until dynamicChild.childCount) {
                     dynamicChild.getChildAt(j).layoutParams.height = maxHeight
                 }
-
                 fixedChild.layoutParams.height = maxHeight
                 dynamicChild.layoutParams.height = maxHeight
                 fixedChild.requestLayout()
@@ -9834,23 +9827,20 @@ import org.readium.r2.testapp.databinding.FragmentHistoryBinding
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
-
 import android.app.DatePickerDialog
+import android.view.ViewTreeObserver
 import java.time.LocalDate
 import java.time.YearMonth
 
-
-
-
 class HistoryFragment : Fragment() {
-
     private var _binding: FragmentHistoryBinding? = null
     private val binding get() = _binding!!
-
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
-
     private var showStats = false
+
+    // Слушатель для удаления в onDestroyView
+    private var scrollChangeListener: ViewTreeObserver.OnScrollChangedListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -9864,14 +9854,24 @@ class HistoryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setHasOptionsMenu(true)
-
         setupPeriodControls()
         setupSearch()
         setupStatsToggle()
         setupFocusHandling()
         setupObservers()
-
+        setupScrollViewSync()
         viewModel.loadData()
+    }
+
+    private fun setupScrollViewSync() {
+        // Создаём слушатель с проверкой _binding
+        scrollChangeListener = ViewTreeObserver.OnScrollChangedListener {
+            // Безопасное обращение: если binding уже null, просто выходим
+            _binding?.let { b ->
+                b.headerHorizontalScrollView.scrollTo(b.tableScrollView.scrollX, 0)
+            }
+        }
+        binding.tableScrollView.viewTreeObserver.addOnScrollChangedListener(scrollChangeListener!!)
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -9893,13 +9893,10 @@ class HistoryFragment : Fragment() {
         lifecycleScope.launch {
             val snackbar = Snackbar.make(binding.root, "Синхронизация с сервером...", Snackbar.LENGTH_INDEFINITE)
             snackbar.show()
-
             try {
                 val app = requireContext().applicationContext as org.readium.r2.testapp.Application
                 val result = app.syncManager.syncHistoryFromServer()
-
                 snackbar.dismiss()
-
                 result.onSuccess { data ->
                     val message = "Синхронизация завершена: загружено ${data.books.size} книг, ${data.readingStats.size} записей"
                     Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
@@ -9918,11 +9915,9 @@ class HistoryFragment : Fragment() {
         binding.prevMonthButton.setOnClickListener {
             viewModel.previousMonth()
         }
-
         binding.nextMonthButton.setOnClickListener {
             viewModel.nextMonth()
         }
-
         binding.calendarButton.setOnClickListener {
             showDateRangePicker()
         }
@@ -9931,11 +9926,8 @@ class HistoryFragment : Fragment() {
     private fun showDateRangePicker() {
         val currentStart = viewModel.currentStartDate
         val currentEnd = viewModel.currentEndDate
-
-        // Создаём диалог выбора начальной даты
         val calendar = Calendar.getInstance()
         calendar.set(currentStart.year, currentStart.monthValue - 1, currentStart.dayOfMonth)
-
         DatePickerDialog(
             requireContext(),
             { _, year, month, day ->
@@ -9952,10 +9944,8 @@ class HistoryFragment : Fragment() {
 
     private fun showEndDatePicker(startDate: LocalDate) {
         val currentEnd = viewModel.currentEndDate
-
         val calendar = Calendar.getInstance()
         calendar.set(currentEnd.year, currentEnd.monthValue - 1, currentEnd.dayOfMonth)
-
         DatePickerDialog(
             requireContext(),
             { _, year, month, day ->
@@ -9974,8 +9964,6 @@ class HistoryFragment : Fragment() {
         }.show()
     }
 
-
-
     private fun setupSearch() {
         binding.searchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -9984,7 +9972,6 @@ class HistoryFragment : Fragment() {
                 viewModel.updateSearchQuery(s?.toString() ?: "")
             }
         })
-
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
                 hideKeyboardAndClearFocus()
@@ -9998,13 +9985,11 @@ class HistoryFragment : Fragment() {
             hideKeyboardAndClearFocus()
             false
         }
-
         binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 hideKeyboardAndClearFocus()
             }
         }
-
         binding.searchInput.setOnClickListener {
             binding.searchInput.isCursorVisible = true
             binding.searchInput.requestFocus()
@@ -10022,7 +10007,6 @@ class HistoryFragment : Fragment() {
         binding.statsToggleButton.setOnClickListener {
             showStats = !showStats
             updateStatsVisibility()
-
             if (showStats) {
                 binding.statsToggleButton.text = "📊 Статистика"
                 binding.statsToggleButton.icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
@@ -10047,13 +10031,11 @@ class HistoryFragment : Fragment() {
                 binding.periodTitle.text = periodText
             }
         }
-
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
                 binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
             }
         }
-
         lifecycleScope.launch {
             viewModel.filteredTableData.collect { data ->
                 if (data != null) {
@@ -10073,7 +10055,6 @@ class HistoryFragment : Fragment() {
                 }
             }
         }
-
         lifecycleScope.launch {
             viewModel.errorMessage.collect { error ->
                 if (error != null) {
@@ -10094,17 +10075,23 @@ class HistoryFragment : Fragment() {
                 startActivity(intent)
             }
         }
-
         tableAdapter.setData(
             data = data,
             fixedContainer = binding.fixedColumnContainer,
             dynamicContainer = binding.dynamicColumnsContainer,
+            headerFixedContainer = binding.headerFixedColumnContainer,
+            headerDynamicContainer = binding.headerDynamicColumnsContainer,
             showStats = showStats
         )
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // 🔧 ВАЖНО: Удаляем слушатель скролла перед обнулением binding
+        scrollChangeListener?.let { listener ->
+            _binding?.tableScrollView?.viewTreeObserver?.removeOnScrollChangedListener(listener)
+        }
+        scrollChangeListener = null
         _binding = null
     }
 }
@@ -17495,6 +17482,7 @@ useExternalFileDir=false
 
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="purple_501">#00CC00</color>
     <color name="purple_500">#6200EE</color>
     <color name="purple_700">#3700B3</color>
     <color name="teal_200">#03DAC5</color>
@@ -21458,23 +21446,19 @@ useExternalFileDir=false
     android:layout_width="120dp"
     android:layout_height="wrap_content"
     android:layout_margin="5dp">
-
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="200dp"
             android:orientation="vertical"
             android:weightSum="4">
-
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="3"
                 tools:ignore="UselessParent">
-
                 <ImageView
                     android:id="@+id/bookshelf_coverImage"
                     android:layout_width="match_parent"
@@ -21482,7 +21466,7 @@ useExternalFileDir=false
                     android:contentDescription="@string/cover_image"
                     android:scaleType="centerCrop" />
 
-                <!-- Overlay с иконками действий (появляется при долгом нажатии) -->
+                <!-- Overlay с иконками действий -->
                 <LinearLayout
                     android:id="@+id/action_overlay"
                     android:layout_width="match_parent"
@@ -21491,7 +21475,6 @@ useExternalFileDir=false
                     android:gravity="center"
                     android:orientation="horizontal"
                     android:visibility="gone">
-
                     <ImageButton
                         android:id="@+id/btn_edit"
                         android:layout_width="48dp"
@@ -21502,7 +21485,6 @@ useExternalFileDir=false
                         android:contentDescription="Редактировать"
                         android:padding="12dp"
                         app:tint="#333333" />
-
                     <ImageButton
                         android:id="@+id/btn_delete"
                         android:layout_width="48dp"
@@ -21513,9 +21495,9 @@ useExternalFileDir=false
                         android:contentDescription="Удалить"
                         android:padding="12dp"
                         app:tint="#333333" />
-
                 </LinearLayout>
 
+                <!-- Полупрозрачная черная полоса -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -21524,6 +21506,7 @@ useExternalFileDir=false
                     android:orientation="vertical"
                     android:padding="8dp">
 
+                    <!-- 1. Сначала идет НАЗВАНИЕ -->
                     <TextView
                         android:id="@+id/bookshelf_titleText"
                         android:layout_width="match_parent"
@@ -21532,11 +21515,24 @@ useExternalFileDir=false
                         android:textSize="12sp"
                         android:maxLines="2"
                         android:ellipsize="end" />
-                </LinearLayout>
 
+                    <!-- 2. Затем идет СТАТУС -->
+                    <TextView
+                        android:id="@+id/bookshelf_statusText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textSize="10sp"
+                        android:textStyle="bold"
+                        android:textColor="#4CAF50"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:layout_marginTop="4dp"
+                        tools:text="В процессе" />
+
+                </LinearLayout>
             </FrameLayout>
 
-            <!-- Контейнер для статистики -->
+            <!-- Контейнер статистики -->
             <LinearLayout
                 android:id="@+id/readingStatsLayout"
                 android:layout_width="match_parent"
@@ -21546,7 +21542,6 @@ useExternalFileDir=false
                 android:padding="4dp"
                 android:background="?attr/colorSurfaceVariant"
                 android:visibility="gone">
-
                 <TextView
                     android:id="@+id/readingTimeText"
                     android:layout_width="wrap_content"
@@ -21554,7 +21549,6 @@ useExternalFileDir=false
                     android:textSize="10sp"
                     android:maxLines="1"
                     tools:text="⏱️ 1ч 23мин" />
-
                 <TextView
                     android:id="@+id/pagesReadText"
                     android:layout_width="wrap_content"
@@ -21562,7 +21556,6 @@ useExternalFileDir=false
                     android:textSize="10sp"
                     android:maxLines="1"
                     tools:text="📄 45 стр." />
-
                 <TextView
                     android:id="@+id/lastReadText"
                     android:layout_width="wrap_content"
@@ -21571,13 +21564,9 @@ useExternalFileDir=false
                     android:maxLines="1"
                     android:visibility="gone"
                     tools:text="🕒 сегодня" />
-
             </LinearLayout>
-
         </LinearLayout>
-
     </FrameLayout>
-
 </androidx.cardview.widget.CardView>
 
 ================================================================================
@@ -21602,7 +21591,6 @@ useExternalFileDir=false
         android:gravity="center_vertical"
         android:padding="12dp"
         android:background="?attr/colorSurface">
-
         <Button
             android:id="@+id/prevMonthButton"
             android:layout_width="48dp"
@@ -21610,7 +21598,6 @@ useExternalFileDir=false
             android:text="◀"
             android:background="@android:color/transparent"
             android:textSize="24sp" />
-
         <TextView
             android:id="@+id/periodTitle"
             android:layout_width="0dp"
@@ -21620,7 +21607,6 @@ useExternalFileDir=false
             android:textSize="18sp"
             android:textStyle="bold"
             android:gravity="center" />
-
         <Button
             android:id="@+id/nextMonthButton"
             android:layout_width="48dp"
@@ -21628,7 +21614,6 @@ useExternalFileDir=false
             android:text="▶"
             android:background="@android:color/transparent"
             android:textSize="24sp" />
-
         <ImageButton
             android:id="@+id/calendarButton"
             android:layout_width="48dp"
@@ -21636,7 +21621,6 @@ useExternalFileDir=false
             android:src="@drawable/ic_baseline_calendar_24"
             android:background="@android:color/transparent"
             android:contentDescription="Выбрать период" />
-
     </LinearLayout>
 
     <!-- Поле поиска -->
@@ -21653,7 +21637,6 @@ useExternalFileDir=false
         app:boxCornerRadiusTopStart="24dp"
         app:endIconMode="clear_text"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/searchInput"
             android:layout_width="match_parent"
@@ -21662,7 +21645,6 @@ useExternalFileDir=false
             android:maxLines="1"
             android:imeOptions="actionDone"
             android:cursorVisible="true" />
-
     </com.google.android.material.textfield.TextInputLayout>
 
     <!-- Кнопка Статистика -->
@@ -21674,15 +21656,46 @@ useExternalFileDir=false
         android:layout_marginEnd="12dp"
         android:layout_marginBottom="8dp"
         android:text="📊 Статистика"
-        android:backgroundTint="?attr/colorPrimary"
+        android:backgroundTint="#00CC00"
         android:textColor="@android:color/white"
         app:icon="@drawable/ic_baseline_show_chart_24"
         app:iconGravity="textStart" />
 
-    <!-- Вертикальный скролл для таблицы -->
+    <!-- ВЕРХНИЙ ЗАГОЛОВОК ТАБЛИЦЫ (Всегда виден) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="?attr/colorSurface"
+        android:elevation="4dp">
+
+        <!-- Фиксированная часть заголовка (над первым столбцом) -->
+        <LinearLayout
+            android:id="@+id/headerFixedColumnContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Прокручиваемая часть заголовка -->
+        <HorizontalScrollView
+            android:id="@+id/headerHorizontalScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:fillViewport="true">
+            <LinearLayout
+                android:id="@+id/headerDynamicColumnsContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </HorizontalScrollView>
+    </LinearLayout>
+
+    <!-- ТЕЛО ТАБЛИЦЫ (Вертикальная прокрутка) -->
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:scrollbars="vertical">
 
         <LinearLayout
@@ -21690,14 +21703,14 @@ useExternalFileDir=false
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
-            <!-- Фиксированная колонка -->
+            <!-- Фиксированная колонка с данными -->
             <LinearLayout
                 android:id="@+id/fixedColumnContainer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:elevation="4dp"
-                android:background="?attr/colorSurface" />
+                android:background="?attr/colorSurface"
+                android:elevation="4dp" />
 
             <!-- Горизонтальный скролл для остальных колонок -->
             <HorizontalScrollView
@@ -21712,11 +21725,8 @@ useExternalFileDir=false
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
-
             </HorizontalScrollView>
-
         </LinearLayout>
-
     </ScrollView>
 
     <!-- Прогресс загрузки -->
@@ -21738,7 +21748,6 @@ useExternalFileDir=false
         android:text="Нет данных за выбранный период"
         android:textSize="16sp"
         android:visibility="gone" />
-
 </LinearLayout>
 
 ================================================================================
@@ -21964,9 +21973,9 @@ dependencies {
 ================================================================================
 СТАТИСТИКА
 ================================================================================
-Всего файлов в проекте: 2876
+Всего файлов в проекте: 2827
 Обработано файлов: 0
 Пропущено файлов: 0
 Всего строк кода: 0
-Дата создания отчета: Tue Apr 28 05:38:21 PM +05 2026
+Дата создания отчета: Tue Apr 28 08:26:36 PM +05 2026
 ================================================================================

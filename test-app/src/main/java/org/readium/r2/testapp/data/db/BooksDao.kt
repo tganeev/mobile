@@ -193,8 +193,10 @@ interface BooksDao {
             "media_type = :mediaType, " +
             "has_file = 1, " +
             "is_deleted = 0, " +
-            "last_synced = :lastSynced " +
-            " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier"
+            "last_synced = :lastSynced, " +
+            "progression = '{}', " +
+            "current_page = 0 " +
+            "WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier"
     )
     suspend fun attachFileToExistingBook(
         serverIdentifier: String,
@@ -210,8 +212,10 @@ interface BooksDao {
             "is_deleted = 0, " +
             "href = :href, " +
             "cover = :cover, " +
-            "media_type = :mediaType " +
-            " WHERE " + Book.ID + " = :bookId"
+            "media_type = :mediaType, " +
+            "progression = '{}', " +
+            "current_page = 0 " +
+            "WHERE " + Book.ID + " = :bookId"
     )
     suspend fun attachFileToBookById(
         bookId: Long,
