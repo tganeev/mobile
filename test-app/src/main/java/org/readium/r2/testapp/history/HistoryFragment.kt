@@ -22,6 +22,7 @@ import org.readium.r2.testapp.reader.ReaderActivityContract
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import android.app.DatePickerDialog
+import android.view.ViewTreeObserver
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -31,6 +32,9 @@ class HistoryFragment : Fragment() {
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
     private var showStats = false
+
+    // Слушатель для удаления в onDestroyView
+    private var scrollChangeListener: ViewTreeObserver.OnScrollChangedListener? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -49,15 +53,19 @@ class HistoryFragment : Fragment() {
         setupStatsToggle()
         setupFocusHandling()
         setupObservers()
-        setupScrollViewSync() // Инициализация синхронизации скролла
+        setupScrollViewSync()
         viewModel.loadData()
     }
 
     private fun setupScrollViewSync() {
-        // Синхронизируем горизонтальный скролл таблицы и заголовка
-        binding.tableScrollView.viewTreeObserver.addOnScrollChangedListener {
-            binding.headerHorizontalScrollView.scrollTo(binding.tableScrollView.scrollX, 0)
+        // Создаём слушатель с проверкой _binding
+        scrollChangeListener = ViewTreeObserver.OnScrollChangedListener {
+            // Безопасное обращение: если binding уже null, просто выходим
+            _binding?.let { b ->
+                b.headerHorizontalScrollView.scrollTo(b.tableScrollView.scrollX, 0)
+            }
         }
+        binding.tableScrollView.viewTreeObserver.addOnScrollChangedListener(scrollChangeListener!!)
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -265,7 +273,6 @@ class HistoryFragment : Fragment() {
             data = data,
             fixedContainer = binding.fixedColumnContainer,
             dynamicContainer = binding.dynamicColumnsContainer,
-            // Передаем новые контейнеры для заголовка
             headerFixedContainer = binding.headerFixedColumnContainer,
             headerDynamicContainer = binding.headerDynamicColumnsContainer,
             showStats = showStats
@@ -274,6 +281,11 @@ class HistoryFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // 🔧 ВАЖНО: Удаляем слушатель скролла перед обнулением binding
+        scrollChangeListener?.let { listener ->
+            _binding?.tableScrollView?.viewTreeObserver?.removeOnScrollChangedListener(listener)
+        }
+        scrollChangeListener = null
         _binding = null
     }
 }

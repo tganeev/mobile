@@ -1,5 +1,6 @@
 package org.readium.r2.testapp.bookshelf
 
+import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
@@ -30,10 +31,7 @@ class BookshelfAdapter(
         onEditBookClick = listener
     }
 
-    override fun onCreateViewHolder(
-        parent: ViewGroup,
-        viewType: Int,
-    ): ViewHolder {
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         return ViewHolder(
             ItemRecycleBookBinding.inflate(
                 LayoutInflater.from(parent.context),
@@ -53,14 +51,12 @@ class BookshelfAdapter(
 
         fun bind(book: Book) {
             binding.bookshelfTitleText.text = book.title
-
             Picasso.get()
                 .load(File(book.cover))
                 .placeholder(R.drawable.cover)
                 .into(binding.bookshelfCoverImage)
 
             binding.readingStatsLayout.visibility = View.VISIBLE
-
             val readingTimeText = formatReadingTime(book.readingTime)
             binding.readingTimeText.text = "⏱️ $readingTimeText"
 
@@ -80,6 +76,36 @@ class BookshelfAdapter(
                 binding.lastReadText.visibility = View.GONE
             }
 
+            // --- ЛОГИКА СТАТУСА ---
+            val statusText: String
+            val statusColor: Int
+
+            if (book.totalPages > 0) {
+                val progress = (book.pagesRead.toDouble() / book.totalPages) * 100
+                if (progress >= 100) {
+                    statusText = "✅ Прочитано"
+                    statusColor = Color.parseColor("#4CAF50") // Зеленый
+                } else if (progress > 0) {
+                    statusText = "📖 В процессе (${progress.toInt()}%)"
+                    statusColor = Color.parseColor("#FFC107") // Желтый/Оранжевый
+                } else {
+                    statusText = "📚 Не начато"
+                    statusColor = Color.parseColor("#9E9E9E") // Серый
+                }
+            } else {
+                // Если страниц не указано
+                if (book.pagesRead > 0) {
+                    statusText = "📖 В процессе"
+                    statusColor = Color.parseColor("#FFC107")
+                } else {
+                    statusText = "📚 Не начато"
+                    statusColor = Color.parseColor("#9E9E9E")
+                }
+            }
+            binding.bookshelfStatusText.text = statusText
+            binding.bookshelfStatusText.setTextColor(statusColor)
+            // ----------------------
+
             binding.actionOverlay.visibility = View.GONE
 
             binding.root.setOnLongClickListener {
@@ -88,7 +114,7 @@ class BookshelfAdapter(
             }
 
             Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
-            Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
+
             binding.root.setOnClickListener {
                 if (binding.actionOverlay.visibility == View.VISIBLE) {
                     hideOverlay()
@@ -96,12 +122,10 @@ class BookshelfAdapter(
                     onBookClick(book)
                 }
             }
-
             binding.btnEdit.setOnClickListener {
                 hideOverlay()
                 onEditBookClick?.invoke(book)
             }
-
             binding.btnDelete.setOnClickListener {
                 hideOverlay()
                 onBookLongClick(book)
@@ -125,7 +149,6 @@ class BookshelfAdapter(
         private fun formatReadingTime(seconds: Long): String {
             val hours = seconds / 3600
             val minutes = (seconds % 3600) / 60
-
             return when {
                 hours > 0 -> "${hours}ч ${minutes}мин"
                 minutes > 0 -> "${minutes}мин"
@@ -138,7 +161,6 @@ class BookshelfAdapter(
             val now = Date()
             val diff = now.time - date.time
             val days = diff / (24 * 60 * 60 * 1000)
-
             return when {
                 days == 0L -> "сегодня"
                 days == 1L -> "вчера"
@@ -147,27 +169,20 @@ class BookshelfAdapter(
             }
         }
     }
+}
 
-    private class BookListDiff : DiffUtil.ItemCallback<Book>() {
+private class BookListDiff : DiffUtil.ItemCallback<Book>() {
+    override fun areItemsTheSame(oldItem: Book, newItem: Book): Boolean {
+        return oldItem.id == newItem.id
+    }
 
-        override fun areItemsTheSame(
-            oldItem: Book,
-            newItem: Book,
-        ): Boolean {
-            return oldItem.id == newItem.id
-        }
-
-        override fun areContentsTheSame(
-            oldItem: Book,
-            newItem: Book,
-        ): Boolean {
-            return oldItem.title == newItem.title &&
-                oldItem.href == newItem.href &&
-                oldItem.author == newItem.author &&
-                oldItem.identifier == newItem.identifier &&
-                oldItem.readingTime == newItem.readingTime &&
-                oldItem.pagesRead == newItem.pagesRead &&
-                oldItem.lastReadDate == newItem.lastReadDate
-        }
+    override fun areContentsTheSame(oldItem: Book, newItem: Book): Boolean {
+        return oldItem.title == newItem.title &&
+            oldItem.href == newItem.href &&
+            oldItem.author == newItem.author &&
+            oldItem.identifier == newItem.identifier &&
+            oldItem.readingTime == newItem.readingTime &&
+            oldItem.pagesRead == newItem.pagesRead &&
+            oldItem.lastReadDate == newItem.lastReadDate
     }
 }
