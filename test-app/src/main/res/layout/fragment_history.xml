@@ -14,7 +14,6 @@
         android:gravity="center_vertical"
         android:padding="12dp"
         android:background="?attr/colorSurface">
-
         <Button
             android:id="@+id/prevMonthButton"
             android:layout_width="48dp"
@@ -22,7 +21,6 @@
             android:text="◀"
             android:background="@android:color/transparent"
             android:textSize="24sp" />
-
         <TextView
             android:id="@+id/periodTitle"
             android:layout_width="0dp"
@@ -32,7 +30,6 @@
             android:textSize="18sp"
             android:textStyle="bold"
             android:gravity="center" />
-
         <Button
             android:id="@+id/nextMonthButton"
             android:layout_width="48dp"
@@ -40,7 +37,6 @@
             android:text="▶"
             android:background="@android:color/transparent"
             android:textSize="24sp" />
-
         <ImageButton
             android:id="@+id/calendarButton"
             android:layout_width="48dp"
@@ -48,7 +44,6 @@
             android:src="@drawable/ic_baseline_calendar_24"
             android:background="@android:color/transparent"
             android:contentDescription="Выбрать период" />
-
     </LinearLayout>
 
     <!-- Поле поиска -->
@@ -65,7 +60,6 @@
         app:boxCornerRadiusTopStart="24dp"
         app:endIconMode="clear_text"
         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/searchInput"
             android:layout_width="match_parent"
@@ -74,7 +68,6 @@
             android:maxLines="1"
             android:imeOptions="actionDone"
             android:cursorVisible="true" />
-
     </com.google.android.material.textfield.TextInputLayout>
 
     <!-- Кнопка Статистика -->
@@ -86,15 +79,46 @@
         android:layout_marginEnd="12dp"
         android:layout_marginBottom="8dp"
         android:text="📊 Статистика"
-        android:backgroundTint="?attr/colorPrimary"
+        android:backgroundTint="#00CC00"
         android:textColor="@android:color/white"
         app:icon="@drawable/ic_baseline_show_chart_24"
         app:iconGravity="textStart" />
 
-    <!-- Вертикальный скролл для таблицы -->
+    <!-- ВЕРХНИЙ ЗАГОЛОВОК ТАБЛИЦЫ (Всегда виден) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="?attr/colorSurface"
+        android:elevation="4dp">
+
+        <!-- Фиксированная часть заголовка (над первым столбцом) -->
+        <LinearLayout
+            android:id="@+id/headerFixedColumnContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Прокручиваемая часть заголовка -->
+        <HorizontalScrollView
+            android:id="@+id/headerHorizontalScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:fillViewport="true">
+            <LinearLayout
+                android:id="@+id/headerDynamicColumnsContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </HorizontalScrollView>
+    </LinearLayout>
+
+    <!-- ТЕЛО ТАБЛИЦЫ (Вертикальная прокрутка) -->
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:scrollbars="vertical">
 
         <LinearLayout
@@ -102,14 +126,14 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
-            <!-- Фиксированная колонка -->
+            <!-- Фиксированная колонка с данными -->
             <LinearLayout
                 android:id="@+id/fixedColumnContainer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:elevation="4dp"
-                android:background="?attr/colorSurface" />
+                android:background="?attr/colorSurface"
+                android:elevation="4dp" />
 
             <!-- Горизонтальный скролл для остальных колонок -->
             <HorizontalScrollView
@@ -124,11 +148,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:orientation="vertical" />
-
             </HorizontalScrollView>
-
         </LinearLayout>
-
     </ScrollView>
 
     <!-- Прогресс загрузки -->
@@ -150,5 +171,4 @@
         android:text="Нет данных за выбранный период"
         android:textSize="16sp"
         android:visibility="gone" />
-
 </LinearLayout>

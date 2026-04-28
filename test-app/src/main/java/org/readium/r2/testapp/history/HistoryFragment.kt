@@ -21,22 +21,15 @@ import org.readium.r2.testapp.databinding.FragmentHistoryBinding
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
-
 import android.app.DatePickerDialog
 import java.time.LocalDate
 import java.time.YearMonth
 
-
-
-
 class HistoryFragment : Fragment() {
-
     private var _binding: FragmentHistoryBinding? = null
     private val binding get() = _binding!!
-
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
-
     private var showStats = false
 
     override fun onCreateView(
@@ -51,14 +44,20 @@ class HistoryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setHasOptionsMenu(true)
-
         setupPeriodControls()
         setupSearch()
         setupStatsToggle()
         setupFocusHandling()
         setupObservers()
-
+        setupScrollViewSync() // Инициализация синхронизации скролла
         viewModel.loadData()
+    }
+
+    private fun setupScrollViewSync() {
+        // Синхронизируем горизонтальный скролл таблицы и заголовка
+        binding.tableScrollView.viewTreeObserver.addOnScrollChangedListener {
+            binding.headerHorizontalScrollView.scrollTo(binding.tableScrollView.scrollX, 0)
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
@@ -80,13 +79,10 @@ class HistoryFragment : Fragment() {
         lifecycleScope.launch {
             val snackbar = Snackbar.make(binding.root, "Синхронизация с сервером...", Snackbar.LENGTH_INDEFINITE)
             snackbar.show()
-
             try {
                 val app = requireContext().applicationContext as org.readium.r2.testapp.Application
                 val result = app.syncManager.syncHistoryFromServer()
-
                 snackbar.dismiss()
-
                 result.onSuccess { data ->
                     val message = "Синхронизация завершена: загружено ${data.books.size} книг, ${data.readingStats.size} записей"
                     Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
@@ -105,11 +101,9 @@ class HistoryFragment : Fragment() {
         binding.prevMonthButton.setOnClickListener {
             viewModel.previousMonth()
         }
-
         binding.nextMonthButton.setOnClickListener {
             viewModel.nextMonth()
         }
-
         binding.calendarButton.setOnClickListener {
             showDateRangePicker()
         }
@@ -118,11 +112,8 @@ class HistoryFragment : Fragment() {
     private fun showDateRangePicker() {
         val currentStart = viewModel.currentStartDate
         val currentEnd = viewModel.currentEndDate
-
-        // Создаём диалог выбора начальной даты
         val calendar = Calendar.getInstance()
         calendar.set(currentStart.year, currentStart.monthValue - 1, currentStart.dayOfMonth)
-
         DatePickerDialog(
             requireContext(),
             { _, year, month, day ->
@@ -139,10 +130,8 @@ class HistoryFragment : Fragment() {
 
     private fun showEndDatePicker(startDate: LocalDate) {
         val currentEnd = viewModel.currentEndDate
-
         val calendar = Calendar.getInstance()
         calendar.set(currentEnd.year, currentEnd.monthValue - 1, currentEnd.dayOfMonth)
-
         DatePickerDialog(
             requireContext(),
             { _, year, month, day ->
@@ -161,8 +150,6 @@ class HistoryFragment : Fragment() {
         }.show()
     }
 
-
-
     private fun setupSearch() {
         binding.searchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -171,7 +158,6 @@ class HistoryFragment : Fragment() {
                 viewModel.updateSearchQuery(s?.toString() ?: "")
             }
         })
-
         binding.searchInput.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
                 hideKeyboardAndClearFocus()
@@ -185,13 +171,11 @@ class HistoryFragment : Fragment() {
             hideKeyboardAndClearFocus()
             false
         }
-
         binding.searchInput.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 hideKeyboardAndClearFocus()
             }
         }
-
         binding.searchInput.setOnClickListener {
             binding.searchInput.isCursorVisible = true
             binding.searchInput.requestFocus()
@@ -209,7 +193,6 @@ class HistoryFragment : Fragment() {
         binding.statsToggleButton.setOnClickListener {
             showStats = !showStats
             updateStatsVisibility()
-
             if (showStats) {
                 binding.statsToggleButton.text = "📊 Статистика"
                 binding.statsToggleButton.icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
@@ -234,13 +217,11 @@ class HistoryFragment : Fragment() {
                 binding.periodTitle.text = periodText
             }
         }
-
         lifecycleScope.launch {
             viewModel.isLoading.collect { isLoading ->
                 binding.progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
             }
         }
-
         lifecycleScope.launch {
             viewModel.filteredTableData.collect { data ->
                 if (data != null) {
@@ -260,7 +241,6 @@ class HistoryFragment : Fragment() {
                 }
             }
         }
-
         lifecycleScope.launch {
             viewModel.errorMessage.collect { error ->
                 if (error != null) {
@@ -281,11 +261,13 @@ class HistoryFragment : Fragment() {
                 startActivity(intent)
             }
         }
-
         tableAdapter.setData(
             data = data,
             fixedContainer = binding.fixedColumnContainer,
             dynamicContainer = binding.dynamicColumnsContainer,
+            // Передаем новые контейнеры для заголовка
+            headerFixedContainer = binding.headerFixedColumnContainer,
+            headerDynamicContainer = binding.headerDynamicColumnsContainer,
             showStats = showStats
         )
     }
