@@ -37,7 +37,7 @@ class HistoryFragment : Fragment() {
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
 
-    private var showStats = true
+    private var showStats = false
 
     override fun onCreateView(
         inflater: LayoutInflater,

@@ -200,7 +200,7 @@ class HistoryTableAdapter(
             // Identifier
             addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
             // Автор
-            addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER))
             // Статус
             addView(createDynamicCell(book.status, 100, gravity = Gravity.CENTER))
             // Категория

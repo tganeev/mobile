@@ -1,7 +1,7 @@
 ================================================================================
 ПОЛНЫЙ ИСХОДНЫЙ КОД ANDROID STUDIO ПРОЕКТА
 ================================================================================
-Дата создания: Sat Apr 25 07:10:39 PM +05 2026
+Дата создания: Tue Apr 28 05:37:46 PM +05 2026
 Директория проекта: /opt/goinfre/kindlyfr/Projects/pkms/mobile/test-app
 ================================================================================
 
@@ -413,6 +413,7 @@ import java.util.*
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.databinding.ItemRecycleBookBinding
+import timber.log.Timber
 
 class BookshelfAdapter(
     private val onBookClick: (Book) -> Unit,
@@ -450,22 +451,25 @@ class BookshelfAdapter(
 
         fun bind(book: Book) {
             binding.bookshelfTitleText.text = book.title
+
             Picasso.get()
                 .load(File(book.cover))
                 .placeholder(R.drawable.cover)
                 .into(binding.bookshelfCoverImage)
 
-            // Отображаем статистику
             binding.readingStatsLayout.visibility = View.VISIBLE
 
-            // Форматируем время чтения
             val readingTimeText = formatReadingTime(book.readingTime)
             binding.readingTimeText.text = "⏱️ $readingTimeText"
 
-            // Отображаем количество страниц
-            binding.pagesReadText.text = "📄 ${book.pagesRead} стр."
+            // Новый формат отображения страниц
+            val pagesText = if (book.totalPages > 0) {
+                "📄 ${book.pagesRead}стр / ${book.totalPages}стр"
+            } else {
+                "📄 ${book.pagesRead}стр"
+            }
+            binding.pagesReadText.text = pagesText
 
-            // Если книга была открыта, показываем дату последнего чтения
             book.lastReadDate?.let { date ->
                 val lastReadText = formatLastReadDate(date)
                 binding.lastReadText.text = "🕒 $lastReadText"
@@ -474,16 +478,15 @@ class BookshelfAdapter(
                 binding.lastReadText.visibility = View.GONE
             }
 
-            // Скрываем overlay по умолчанию
             binding.actionOverlay.visibility = View.GONE
 
-            // Обработка долгого нажатия - показываем overlay
             binding.root.setOnLongClickListener {
                 showOverlay(book)
                 true
             }
 
-            // Клик по карточке - открыть книгу (только если overlay не виден)
+            Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
+            Timber.d("Book: ${book.title}, pagesRead=${book.pagesRead}, totalPages=${book.totalPages}")
             binding.root.setOnClickListener {
                 if (binding.actionOverlay.visibility == View.VISIBLE) {
                     hideOverlay()
@@ -492,13 +495,11 @@ class BookshelfAdapter(
                 }
             }
 
-            // Кнопка редактирования
             binding.btnEdit.setOnClickListener {
                 hideOverlay()
                 onEditBookClick?.invoke(book)
             }
 
-            // Кнопка удаления
             binding.btnDelete.setOnClickListener {
                 hideOverlay()
                 onBookLongClick(book)
@@ -506,13 +507,8 @@ class BookshelfAdapter(
         }
 
         private fun showOverlay(book: Book) {
-            // Скрываем предыдущий таймер
             hideRunnable?.let { handler.removeCallbacks(it) }
-
-            // Показываем overlay
             binding.actionOverlay.visibility = View.VISIBLE
-
-            // Автоматически скрываем через 3 секунды
             hideRunnable = Runnable {
                 hideOverlay()
             }
@@ -573,7 +569,6 @@ class BookshelfAdapter(
         }
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/bookshelf/BookshelfViewModel.kt
@@ -804,7 +799,13 @@ import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.databinding.FragmentBookshelfBinding
 import org.readium.r2.testapp.opds.GridAutoFitLayoutManager
 import org.readium.r2.testapp.reader.ReaderActivityContract
+import org.readium.r2.testapp.utils.LinkBookDialogFragment
 import org.readium.r2.testapp.utils.viewLifecycle
+
+import kotlinx.coroutines.flow.consumeAsFlow
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.receiveAsFlow
+
 
 class BookshelfFragment : Fragment() {
 
@@ -949,6 +950,12 @@ class BookshelfFragment : Fragment() {
                 }
                 .show()
         }
+
+        lifecycleScope.launch {
+            app.bookshelf.channel.receiveAsFlow().collect { event ->
+                handleBookshelfEvent(event)
+            }
+        }
     }
 
     @OptIn(DelicateReadiumApi::class)
@@ -984,6 +991,40 @@ class BookshelfFragment : Fragment() {
                 )
                 startActivity(intent)
             }
+        }
+    }
+
+    // ДОБАВИТЬ НОВЫЙ МЕТОД ДЛЯ ОБРАБОТКИ СОБЫТИЙ ИЗ BOOKSHELF
+    private fun handleBookshelfEvent(event: org.readium.r2.testapp.domain.Bookshelf.Event) {
+        when (event) {
+            is org.readium.r2.testapp.domain.Bookshelf.Event.ShowLinkDialog -> {
+                val dialog = LinkBookDialogFragment.newInstance(event.existingBook)
+                dialog.setOnLinkConfirmed {
+                    lifecycleScope.launch {
+                        app.bookshelf.attachFileToExistingBook(
+                            serverIdentifier = event.existingBook.serverIdentifier ?: "",
+                            href = event.newBookData.url.toString(),
+                            cover = event.newBookData.coverFile.path,
+                            mediaType = event.newBookData.format?.mediaType?.toString() ?: ""
+                        )
+                        app.bookshelf.refreshBooks()
+                        lifecycleScope.launch {
+                            bookshelfViewModel.books.collect {
+                                bookshelfAdapter.submitList(it)
+                            }
+                        }
+                    }
+                    dialog.dismiss()
+                }
+                dialog.setOnCreateNewConfirmed {
+                    lifecycleScope.launch {
+                        app.bookshelf.addPublicationFromStorage(event.newBookData.url)
+                    }
+                    dialog.dismiss()
+                }
+                dialog.show(childFragmentManager, "LinkBookDialog")
+            }
+            else -> { /* другие события не обрабатываем */ }
         }
     }
 
@@ -5494,17 +5535,12 @@ abstract class BaseReaderFragment : Fragment() {
 РАЗМЕР: 12K
 ================================================================================
 
-/*
- * Copyright 2022 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
-
 package org.readium.r2.testapp.reader
 
 import android.app.Application
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences as JetpackPreferences
+import kotlinx.coroutines.flow.firstOrNull
 import org.json.JSONObject
 import org.readium.adapter.exoplayer.audio.ExoPlayerEngineProvider
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
@@ -5518,6 +5554,7 @@ import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.allAreHtml
 import org.readium.r2.shared.publication.services.isRestricted
 import org.readium.r2.shared.publication.services.protectionError
+import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.getOrElse
@@ -5530,6 +5567,8 @@ import org.readium.r2.testapp.reader.preferences.ExoPlayerPreferencesManagerFact
 import org.readium.r2.testapp.reader.preferences.PdfiumPreferencesManagerFactory
 import org.readium.r2.testapp.utils.CoroutineQueue
 import timber.log.Timber
+import org.readium.r2.shared.util.Url
+import org.readium.r2.shared.util.mediatype.MediaType
 
 /**
  * Open and store publications in order for them to be listened or read.
@@ -5569,6 +5608,8 @@ class ReaderRepository(
             return Try.success(Unit)
         }
 
+
+
         val book = checkNotNull(bookRepository.get(bookId)) { "Cannot find book in database." }
 
         val asset = readium.assetRetriever.retrieve(
@@ -5603,8 +5644,28 @@ class ReaderRepository(
             )
         }
 
-        val initialLocator = book.progression
-            ?.let { Locator.fromJSON(JSONObject(it)) }
+        // ===== ВАЖНО: Получаем сохранённый прогресс из БД =====
+        var initialLocator: Locator? = null
+
+        // 1. Пробуем progression (точная позиция)
+        if (!book.progression.isNullOrBlank() && book.progression != "{}") {
+            try {
+                initialLocator = Locator.fromJSON(JSONObject(book.progression))
+                Timber.d("Loaded from progression: position=${initialLocator?.locations?.position}")
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to parse progression JSON")
+            }
+        }
+
+// 2. Если progression нет, используем pagesRead
+        if (initialLocator == null && book.pagesRead > 0) {
+            initialLocator = createLocatorFromPage(book.pagesRead)
+            Timber.d("Created locator from pagesRead: ${book.pagesRead}")
+        }
+
+        if (initialLocator == null) {
+            Timber.d("No progression or pagesRead found, opening from start")
+        }
 
         val readerInitData = when {
             publication.conformsTo(Publication.Profile.AUDIOBOOK) ->
@@ -5630,6 +5691,17 @@ class ReaderRepository(
                 mediaServiceFacade.openSession(bookId, it.mediaNavigator)
             }
         }
+    }
+
+    private fun createLocatorFromPage(page: Int): Locator {
+        return Locator(
+            href = AbsoluteUrl("http://localhost")!!,
+            mediaType = MediaType.BINARY,
+            locations = Locator.Locations(
+                position = page,
+                totalProgression = page.toDouble() / 100
+            )
+        )
     }
 
     private suspend fun openAudio(
@@ -5763,7 +5835,6 @@ class ReaderRepository(
         }
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/reader/ReaderViewModel.kt
@@ -5951,7 +6022,7 @@ class ReaderViewModel(
     // ===== СОХРАНЕНИЕ ПРОГРЕССА =====
 
     fun saveProgression(locator: Locator) = viewModelScope.launch {
-        Timber.d("=== SAVE PROGRESSION ===")
+        Timber.d("=== SAVE PROGRESSION CALLED ===")
         Timber.d("bookId: $bookId")
         Timber.d("locator href: ${locator.href}")
         Timber.d("locator position: ${locator.locations.position}")
@@ -9341,6 +9412,7 @@ data class BookProgress(
     val bookId: Long,
     val title: String,
     val author: String,
+    val identifier: String?,
     val status: String,
     val category: String,
     val dailyProgress: Map<LocalDate, Int>,
@@ -9400,26 +9472,24 @@ class HistoryTableAdapter(
         fixedContainer.removeAllViews()
         dynamicContainer.removeAllViews()
 
-        // ТОЛЬКО ЕСЛИ СТАТИСТИКА ВКЛЮЧЕНА
         if (showStats) {
-            // ИТОГО (стр.)
             fixedContainer.addView(createTotalFixedRow("ИТОГО (стр.)"))
             dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalsByDate, data.totalPagesSum) { value ->
                 formatTotalPages(value)
             })
 
-            // ИТОГО (часы)
             fixedContainer.addView(createTotalFixedRow("ИТОГО (часы)"))
             dynamicContainer.addView(createTotalDynamicRow(data.dates, data.totalTimeByDate, data.totalHoursSum) { value ->
                 formatHoursShort(value)
             })
         }
 
-        // Заголовки таблицы (всегда)
+        // ФИКСИРОВАННАЯ ЧАСТЬ - только название книги
         fixedContainer.addView(createFixedHeaderRow())
+
+        // ДИНАМИЧЕСКАЯ ЧАСТЬ - все остальные колонки (включая Identifier)
         dynamicContainer.addView(createDynamicHeaderRow(data.dates))
 
-        // Данные книг (всегда)
         data.books.forEach { book ->
             fixedContainer.addView(createFixedRow(book))
             dynamicContainer.addView(createDynamicRow(book, data.dates))
@@ -9428,6 +9498,7 @@ class HistoryTableAdapter(
         alignRowHeights(fixedContainer, dynamicContainer)
     }
 
+    // ФИКСИРОВАННАЯ ЧАСТЬ - только заголовок "Название"
     private fun createFixedHeaderRow(): LinearLayout {
         return LinearLayout(fixedColumnLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -9439,9 +9510,11 @@ class HistoryTableAdapter(
         }
     }
 
+    // ДИНАМИЧЕСКАЯ ЧАСТЬ - заголовки всех остальных колонок
     private fun createDynamicHeaderRow(dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
+            addView(createDynamicCell("Identifier", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Автор", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Статус", 100, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Категория", 80, isHeader = true, gravity = Gravity.CENTER))
@@ -9477,7 +9550,7 @@ class HistoryTableAdapter(
 
             addView(createMergedCell(
                 text = formatter(totalSum),
-                widthDp = 150 + 100 + 80,
+                widthDp = 150 + 150 + 100 + 80,  // Identifier + Автор + Статус + Категория
                 isTotal = true,
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START,
                 backgroundTransparent = true,
@@ -9528,6 +9601,7 @@ class HistoryTableAdapter(
         }
     }
 
+    // ФИКСИРОВАННАЯ ЧАСТЬ - только название книги
     private fun createFixedRow(book: BookProgress): LinearLayout {
         return LinearLayout(fixedColumnLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -9545,14 +9619,21 @@ class HistoryTableAdapter(
         }
     }
 
+    // ДИНАМИЧЕСКАЯ ЧАСТЬ - все остальные данные
     private fun createDynamicRow(book: BookProgress, dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
 
-            addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            // Identifier
+            addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            // Автор
+            addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER))
+            // Статус
             addView(createDynamicCell(book.status, 100, gravity = Gravity.CENTER))
+            // Категория
             addView(createDynamicCell(book.category, 80, gravity = Gravity.CENTER))
 
+            // Статистика по датам
             dates.forEach { date ->
                 val pages = book.dailyProgress[date] ?: 0
                 val hours = book.dailyTime[date] ?: 0.0
@@ -9752,6 +9833,14 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentHistoryBinding
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import java.time.format.DateTimeFormatter
+import java.util.Calendar
+
+import android.app.DatePickerDialog
+import java.time.LocalDate
+import java.time.YearMonth
+
+
+
 
 class HistoryFragment : Fragment() {
 
@@ -9761,7 +9850,7 @@ class HistoryFragment : Fragment() {
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
 
-    private var showStats = true
+    private var showStats = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -9835,9 +9924,57 @@ class HistoryFragment : Fragment() {
         }
 
         binding.calendarButton.setOnClickListener {
-            Snackbar.make(binding.root, "Выбор периода будет добавлен позже", Snackbar.LENGTH_LONG).show()
+            showDateRangePicker()
         }
     }
+
+    private fun showDateRangePicker() {
+        val currentStart = viewModel.currentStartDate
+        val currentEnd = viewModel.currentEndDate
+
+        // Создаём диалог выбора начальной даты
+        val calendar = Calendar.getInstance()
+        calendar.set(currentStart.year, currentStart.monthValue - 1, currentStart.dayOfMonth)
+
+        DatePickerDialog(
+            requireContext(),
+            { _, year, month, day ->
+                val startDate = LocalDate.of(year, month + 1, day)
+                showEndDatePicker(startDate)
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            setTitle("Выберите начальную дату")
+        }.show()
+    }
+
+    private fun showEndDatePicker(startDate: LocalDate) {
+        val currentEnd = viewModel.currentEndDate
+
+        val calendar = Calendar.getInstance()
+        calendar.set(currentEnd.year, currentEnd.monthValue - 1, currentEnd.dayOfMonth)
+
+        DatePickerDialog(
+            requireContext(),
+            { _, year, month, day ->
+                val endDate = LocalDate.of(year, month + 1, day)
+                if (endDate.isBefore(startDate)) {
+                    Snackbar.make(binding.root, "Конечная дата не может быть раньше начальной", Snackbar.LENGTH_LONG).show()
+                } else {
+                    viewModel.loadDataForRange(startDate, endDate)
+                }
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).apply {
+            setTitle("Выберите конечную дату")
+        }.show()
+    }
+
+
 
     private fun setupSearch() {
         binding.searchInput.addTextChangedListener(object : TextWatcher {
@@ -10021,6 +10158,10 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     private val _filteredTableData = MutableStateFlow<HistoryTableData?>(null)
     val filteredTableData: StateFlow<HistoryTableData?> = _filteredTableData.asStateFlow()
 
+    val currentStartDate: LocalDate get() = _periodRange.value.first
+    val currentEndDate: LocalDate get() = _periodRange.value.second
+
+
     init {
         viewModelScope.launch {
             combine(
@@ -10109,7 +10250,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun loadHistoryData(startDate: LocalDate, endDate: LocalDate): HistoryTableData {
-        val books = app.bookRepository.books().first()
+        val books = app.bookRepository.booksForHistory().first()
         val allStats = app.bookRepository.getAllReadingStats().first()
 
         val statsInRange = allStats.filter { stat ->
@@ -10147,6 +10288,7 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
                 bookId = bookId,
                 title = book.title ?: "Без названия",
                 author = book.author ?: "",
+                identifier = book.serverIdentifier ?: book.identifier,
                 status = statusText,
                 category = "0.0",
                 dailyProgress = dailyProgress,
@@ -11627,6 +11769,69 @@ inline fun <reified T> Flow<T>.observeWhenStarted(
 
 
 ================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/utils/LinkBookDialogFragment.kt
+ТИП: KOTLIN
+РАЗМЕР: 4.0K
+================================================================================
+
+package org.readium.r2.testapp.utils
+
+import android.app.Dialog
+import android.os.Bundle
+import androidx.appcompat.app.AlertDialog
+import androidx.fragment.app.DialogFragment
+import org.readium.r2.testapp.R
+import org.readium.r2.testapp.data.model.Book
+
+class LinkBookDialogFragment : DialogFragment() {
+
+    private var onLinkConfirmed: (() -> Unit)? = null
+    private var onCreateNewConfirmed: (() -> Unit)? = null
+    private var existingBook: Book? = null
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        existingBook = arguments?.getSerializable(ARG_EXISTING_BOOK) as? Book
+
+        val title = existingBook?.title ?: "книге"
+        val author = existingBook?.author?.let { " ($it)" } ?: ""
+
+        return AlertDialog.Builder(requireContext())
+            .setTitle("Связать с историей?")
+            .setMessage("Найдена существующая запись о книге «$title$author» с историей чтения. Связать с импортируемым файлом?")
+            .setPositiveButton("Связать") { _, _ ->
+                onLinkConfirmed?.invoke()
+            }
+            .setNegativeButton("Создать новую") { _, _ ->
+                onCreateNewConfirmed?.invoke()
+            }
+            .setNeutralButton("Отмена") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .create()
+    }
+
+    fun setOnLinkConfirmed(callback: () -> Unit) {
+        onLinkConfirmed = callback
+    }
+
+    fun setOnCreateNewConfirmed(callback: () -> Unit) {
+        onCreateNewConfirmed = callback
+    }
+
+    companion object {
+        private const val ARG_EXISTING_BOOK = "existing_book"
+
+        fun newInstance(existingBook: Book): LinkBookDialogFragment {
+            val fragment = LinkBookDialogFragment()
+            val args = Bundle()
+            args.putSerializable(ARG_EXISTING_BOOK, existingBook)
+            fragment.arguments = args
+            return fragment
+        }
+    }
+}
+
+================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/utils/UserError.kt
 ТИП: KOTLIN
 РАЗМЕР: 8.0K
@@ -12027,6 +12232,10 @@ class MainViewModel(
             }
             Bookshelf.Event.ImportPublicationSuccess -> {
                 channel.send(Event.ImportPublicationSuccess)
+            }
+            is Bookshelf.Event.ShowLinkDialog -> {
+                // Диалог показывается в BookshelfFragment, здесь ничего не делаем
+                // Но ветка должна быть для exhaustive when
             }
         }
     }
@@ -12514,7 +12723,7 @@ abstract class AppDatabase : RoomDatabase() {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/db/BooksDao.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 12K
 ================================================================================
 
 package org.readium.r2.testapp.data.db
@@ -12570,11 +12779,11 @@ interface BooksDao {
     )
     suspend fun saveProgression(locator: String, id: Long)
 
-    // Методы для работы с закладками
+    // ===== МЕТОДЫ ДЛЯ ЗАКЛАДОК =====
     @Query("SELECT * FROM " + Bookmark.TABLE_NAME + " WHERE " + Bookmark.BOOK_ID + " = :bookId")
     fun getBookmarksForBook(bookId: Long): Flow<List<Bookmark>>
 
-    // Методы для работы с подсветками
+    // ===== МЕТОДЫ ДЛЯ ПОДСВЕТОК =====
     @Query(
         "SELECT * FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.BOOK_ID} = :bookId ORDER BY ${Highlight.TOTAL_PROGRESSION} ASC"
     )
@@ -12605,18 +12814,15 @@ interface BooksDao {
     @Query("DELETE FROM ${Highlight.TABLE_NAME} WHERE ${Highlight.ID} = :id")
     suspend fun deleteHighlight(id: Long)
 
-    // Методы для работы со статистикой чтения
+    // ===== МЕТОДЫ ДЛЯ СТАТИСТИКИ ЧТЕНИЯ =====
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId ORDER BY date ASC")
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>>
-
-
 
     @Query("SELECT * FROM reading_stats ORDER BY date ASC")
     fun getAllReadingStats(): Flow<List<ReadingStat>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReadingStat(stat: ReadingStat)
-
 
     @Query("DELETE FROM reading_stats WHERE book_id = :bookId AND date = :date")
     suspend fun deleteReadingStat(bookId: Long, date: String)
@@ -12654,8 +12860,7 @@ interface BooksDao {
         pagesToAdd: Int,
     )
 
-    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ И ВОССТАНОВЛЕНИЯ =====
-
+    // ===== МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ И ВОССТАНОВЛЕНИЯ =====
     @Query("UPDATE " + Book.TABLE_NAME + " SET " + Book.IS_DELETED + " = 1 WHERE " + Book.ID + " = :id")
     suspend fun softDeleteBook(id: Long)
 
@@ -12688,6 +12893,60 @@ interface BooksDao {
 
     @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 OR " + Book.HAS_FILE + " = 0")
     suspend fun getAllBooksForSync(): List<Book>
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier AND " + Book.IS_DELETED + " = 0")
+    suspend fun findBookByServerIdentifier(serverIdentifier: String): Book?
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.TITLE + " = :title AND " + Book.AUTHOR + " = :author AND " + Book.IS_DELETED + " = 0")
+    suspend fun findBookByTitleAndAuthor(title: String, author: String?): Book?
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.TITLE + " = :title AND " + Book.IS_DELETED + " = 0")
+    suspend fun findBooksByTitle(title: String): List<Book>
+
+    @Query("UPDATE books SET current_page = :currentPage WHERE id = :bookId")
+    suspend fun updateCurrentPage(bookId: Long, currentPage: Int)
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.HAS_FILE + " = 1 AND " + Book.IS_DELETED + " = 0 ORDER BY " + Book.CREATION_DATE + " desc")
+    fun getBooksWithFile(): Flow<List<Book>>
+
+    @Query("SELECT * FROM " + Book.TABLE_NAME + " WHERE " + Book.IS_DELETED + " = 0 ORDER BY " + Book.CREATION_DATE + " desc")
+    fun getAllBooksForHistory(): Flow<List<Book>>
+
+    @Query(
+        "UPDATE " + Book.TABLE_NAME + " SET " +
+            "href = :href, " +
+            "cover = :cover, " +
+            "media_type = :mediaType, " +
+            "has_file = 1, " +
+            "is_deleted = 0, " +
+            "last_synced = :lastSynced " +
+            " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier"
+    )
+    suspend fun attachFileToExistingBook(
+        serverIdentifier: String,
+        href: String,
+        cover: String,
+        mediaType: String,
+        lastSynced: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        "UPDATE " + Book.TABLE_NAME + " SET " +
+            "has_file = 1, " +
+            "is_deleted = 0, " +
+            "href = :href, " +
+            "cover = :cover, " +
+            "media_type = :mediaType " +
+            " WHERE " + Book.ID + " = :bookId"
+    )
+    suspend fun attachFileToBookById(
+        bookId: Long,
+        href: String,
+        cover: String,
+        mediaType: String
+    )
 }
 
 ================================================================================
@@ -12828,11 +13087,12 @@ class CatalogRepository(private val catalogDao: CatalogDao) {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/data/BookRepository.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 12K
 ================================================================================
 
 package org.readium.r2.testapp.data
 
+import android.util.Log
 import androidx.annotation.ColorInt
 import java.io.File
 import java.time.LocalDate
@@ -12841,6 +13101,7 @@ import org.joda.time.DateTime
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.indexOfFirstWithHref
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.testapp.data.db.BooksDao
@@ -12856,7 +13117,8 @@ class BookRepository(
 ) {
     // ===== ОСНОВНЫЕ МЕТОДЫ =====
 
-    fun books(): Flow<List<Book>> = booksDao.getAllBooks()
+    fun books(): Flow<List<Book>> = booksDao.getBooksWithFile()
+    fun booksForHistory(): Flow<List<Book>> = booksDao.getAllBooksForHistory()
 
     suspend fun get(id: Long) = booksDao.get(id)
 
@@ -12902,6 +13164,9 @@ class BookRepository(
         publication: Publication,
         cover: File,
     ): Long {
+        val totalPages = publication.positions().size
+        Log.d("BookRepository", "insertBook: totalPages = $totalPages")
+
         val book = Book(
             creation = DateTime().toDate().time,
             title = publication.metadata.title ?: url.filename,
@@ -12914,7 +13179,7 @@ class BookRepository(
             readingTime = 0,
             pagesRead = 0,
             currentPage = 0,
-            totalPages = 0,
+            totalPages = totalPages,  // ← Убедитесь, что эта строка есть
             lastReadDate = null,
             serverIdentifier = publication.metadata.identifier
         )
@@ -12923,7 +13188,7 @@ class BookRepository(
 
     suspend fun deleteBook(id: Long) = booksDao.deleteBook(id)
 
-    // ===== НОВЫЕ МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ =====
+    // ===== МЕТОДЫ ДЛЯ МЯГКОГО УДАЛЕНИЯ =====
 
     suspend fun softDeleteBook(bookId: Long) = booksDao.softDeleteBook(bookId)
 
@@ -13055,6 +13320,39 @@ class BookRepository(
         booksDao.updateHighlightStyle(id, style, tint)
 
     suspend fun deleteHighlight(id: Long) = booksDao.deleteHighlight(id)
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
+
+    suspend fun findBookByServerIdentifier(serverIdentifier: String): Book? =
+        booksDao.findBookByServerIdentifier(serverIdentifier)
+
+    suspend fun findBookByTitleAndAuthor(title: String, author: String?): Book? =
+        booksDao.findBookByTitleAndAuthor(title, author)
+
+    suspend fun findBooksByTitle(title: String): List<Book> =
+        booksDao.findBooksByTitle(title)
+
+    suspend fun getBookByIdentifier(identifier: String): Book? =
+        booksDao.getBookByIdentifier(identifier)
+
+    suspend fun updateCurrentPage(bookId: Long, currentPage: Int) {
+        Timber.d("updateCurrentPage: bookId=$bookId, currentPage=$currentPage")
+        booksDao.updateCurrentPage(bookId, currentPage)
+    }
+
+    suspend fun attachFileToExistingBook(
+        serverIdentifier: String,
+        href: String,
+        cover: String,
+        mediaType: String
+    ) = booksDao.attachFileToExistingBook(serverIdentifier, href, cover, mediaType)
+
+    suspend fun attachFileToBookById(
+        bookId: Long,
+        href: String,
+        cover: String,
+        mediaType: String
+    ) = booksDao.attachFileToBookById(bookId, href, cover, mediaType)
 }
 
 ================================================================================
@@ -14159,6 +14457,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import java.time.LocalDate
 import java.util.concurrent.TimeUnit
+import timber.log.Timber
 
 interface SyncApi {
     @POST("/api/sync")
@@ -14253,7 +14552,15 @@ class SyncManager(
     }
 
     private suspend fun saveBookFromServer(serverBook: SyncBookHistory) {
+        Timber.d("=== SYNC BOOK FROM SERVER ===")
+        Timber.d("Server ID: ${serverBook.serverId}")
+        Timber.d("Title: ${serverBook.title}")
+        Timber.d("Author: ${serverBook.author}")
+        Timber.d("Current page from server: ${serverBook.currentPage}")
+        Timber.d("Reading time: ${serverBook.readingTime}")
+
         val existingBook = bookRepository.getBookByServerIdentifier(serverBook.serverId)
+        Timber.d("Existing book by serverId: ${existingBook?.id}")
 
         if (existingBook != null) {
             val bookId = existingBook.id
@@ -14270,12 +14577,15 @@ class SyncManager(
                     isDeleted = false
                 )
                 bookRepository.updateBook(updatedBook)
-                Log.d(TAG, "Updated book: ${serverBook.title}")
+
+                // Дополнительно обновляем currentPage через прямой запрос
+                bookRepository.updateCurrentPage(bookId, serverBook.currentPage)
+
+                Timber.d("✅ UPDATED existing book: ${existingBook.id}, currentPage=${serverBook.currentPage}")
             } else {
-                Log.w(TAG, "Book has null id: ${serverBook.serverId}")
+                Timber.w("Book has null id: ${serverBook.serverId}")
             }
         } else {
-            // Используем конструктор Book без MediaType объекта
             val newBook = Book(
                 id = null,
                 creation = System.currentTimeMillis(),
@@ -14284,7 +14594,7 @@ class SyncManager(
                 author = serverBook.author,
                 identifier = serverBook.serverId,
                 progression = null,
-                rawMediaType = "application/epub+zip",  //直接用 строку
+                rawMediaType = "application/epub+zip",
                 cover = "",
                 readingTime = serverBook.readingTime,
                 pagesRead = serverBook.currentPage,
@@ -14296,8 +14606,8 @@ class SyncManager(
                 lastSynced = System.currentTimeMillis(),
                 serverIdentifier = serverBook.serverId
             )
-            bookRepository.insertBookWithoutFile(newBook)
-            Log.d(TAG, "Created new book record: ${serverBook.title}")
+            val newId = bookRepository.insertBookWithoutFile(newBook)
+            Timber.d("✅ CREATED new book record with ID: $newId, currentPage=${serverBook.currentPage}")
         }
     }
 
@@ -14353,7 +14663,7 @@ class SyncManager(
                         categoryId = null,
                         readingStats = stats.map { stat ->
                             SyncReadingStatDTO(
-                                date = stat.date.toString(),
+                                date = stat.date.toString(),  // Преобразуем LocalDate в String
                                 pagesRead = stat.pagesRead,
                                 hoursRead = stat.hoursRead
                             )
@@ -14500,6 +14810,10 @@ class CoverStorage(
                 BitmapFactory.decodeFile(path)
             }
         }
+
+    fun getCoversDirectory(): File {
+        return coverDir()
+    }
 
     private suspend fun HttpClient.fetchBitmap(request: HttpRequest): Try<Bitmap, HttpError> =
         fetchWithDecoder(request) { response ->
@@ -14928,47 +15242,33 @@ private class OpdsPublicationRetriever(
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/domain/Bookshelf.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 12K
 ================================================================================
-
-/*
- * Copyright 2023 Readium Foundation. All rights reserved.
- * Use of this source code is governed by the BSD-style license
- * available in the top-level LICENSE file of the project.
- */
 
 package org.readium.r2.testapp.domain
 
 import android.net.Uri
-import android.util.Log
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.DebugError
 import org.readium.r2.shared.util.Try
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.file.FileSystemError
 import org.readium.r2.shared.util.format.Format
-import org.readium.r2.shared.util.getOrElse
 import org.readium.r2.shared.util.toUrl
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.model.Book
-import org.readium.r2.testapp.data.model.RestoredBookEntity
 import org.readium.r2.testapp.utils.tryOrLog
 import timber.log.Timber
 
-/**
- * The [Bookshelf] supports two different processes:
- * - directly _adding_ the url to a remote asset or an asset from shared storage to the database
- * - _importing_ an asset, that is downloading or copying the publication the asset points to to the app storage
- *   before adding it to the database
- */
 class Bookshelf(
     private val bookRepository: BookRepository,
     private val coverStorage: CoverStorage,
@@ -14977,136 +15277,283 @@ class Bookshelf(
     private val publicationRetriever: PublicationRetriever,
 ) {
     sealed class Event {
-        data object ImportPublicationSuccess :
-            Event()
-
-        class ImportPublicationError(
-            val error: ImportError,
+        data object ImportPublicationSuccess : Event()
+        class ImportPublicationError(val error: ImportError) : Event()
+        class ShowLinkDialog(
+            val existingBook: Book,
+            val newBookData: NewBookData
         ) : Event()
     }
 
-    val channel: Channel<Event> =
-        Channel(Channel.UNLIMITED)
+    data class NewBookData(
+        val url: AbsoluteUrl,
+        val format: Format?,
+        val coverUrl: AbsoluteUrl?,
+        val publication: Publication,
+        val coverFile: File
+    )
 
-    private val coroutineScope: CoroutineScope =
-        MainScope()
+    val channel: Channel<Event> = Channel(Channel.UNLIMITED)
+    private val coroutineScope: CoroutineScope = MainScope()
 
-    fun importPublicationFromStorage(
-        uri: Uri,
-    ) {
+    fun importPublicationFromStorage(uri: Uri) {
         coroutineScope.launch {
-            addBookFeedback(publicationRetriever.retrieveFromStorage(uri))
+            val result = publicationRetriever.retrieveFromStorage(uri)
+            val r = result.getOrNull()
+            if (r != null) {
+                addBook(r.publication.toUrl(isDirectory = false), r.format, r.coverUrl)
+            } else {
+                channel.send(Event.ImportPublicationError(ImportError.Publication(PublicationError.Unexpected(DebugError("Import failed")))))
+            }
         }
     }
 
-    fun importPublicationFromHttp(
-        url: AbsoluteUrl,
-    ) {
+    fun importPublicationFromHttp(url: AbsoluteUrl) {
         coroutineScope.launch {
-            addBookFeedback(publicationRetriever.retrieveFromHttp(url))
+            val result = publicationRetriever.retrieveFromHttp(url)
+            val r = result.getOrNull()
+            if (r != null) {
+                addBook(r.publication.toUrl(isDirectory = false), r.format, r.coverUrl)
+            } else {
+                channel.send(Event.ImportPublicationError(ImportError.Publication(PublicationError.Unexpected(DebugError("Import failed")))))
+            }
         }
     }
 
-    fun importPublicationFromOpds(
-        publication: Publication,
-    ) {
+    fun importPublicationFromOpds(publication: Publication) {
         coroutineScope.launch {
-            addBookFeedback(publicationRetriever.retrieveFromOpds(publication))
+            val result = publicationRetriever.retrieveFromOpds(publication)
+            val r = result.getOrNull()
+            if (r != null) {
+                addBook(r.publication.toUrl(isDirectory = false), r.format, r.coverUrl)
+            } else {
+                channel.send(Event.ImportPublicationError(ImportError.Publication(PublicationError.Unexpected(DebugError("Import failed")))))
+            }
         }
     }
 
-    fun addPublicationFromWeb(
-        url: AbsoluteUrl,
-    ) {
+    fun addPublicationFromWeb(url: AbsoluteUrl) {
         coroutineScope.launch {
-            addBookFeedback(url)
+            addBook(url, null, null)
         }
     }
 
-    fun addPublicationFromStorage(
-        url: AbsoluteUrl,
-    ) {
+    fun addPublicationFromStorage(url: AbsoluteUrl) {
         coroutineScope.launch {
-            addBookFeedback(url)
+            addBook(url, null, null)
         }
-    }
-
-    private suspend fun addBookFeedback(
-        retrieverResult: Try<PublicationRetriever.Result, ImportError>,
-    ) {
-        retrieverResult
-            .map { addBook(it.publication.toUrl(isDirectory = false), it.format, it.coverUrl) }
-            .onSuccess { channel.send(Event.ImportPublicationSuccess) }
-            .onFailure { channel.send(Event.ImportPublicationError(it)) }
-    }
-
-    private suspend fun addBookFeedback(
-        url: AbsoluteUrl,
-        format: Format? = null,
-        coverUrl: AbsoluteUrl? = null,
-    ) {
-        addBook(url, format, coverUrl)
-            .onSuccess { channel.send(Event.ImportPublicationSuccess) }
-            .onFailure { channel.send(Event.ImportPublicationError(it)) }
     }
 
     private suspend fun addBook(
         url: AbsoluteUrl,
         format: Format? = null,
         coverUrl: AbsoluteUrl? = null,
-    ): Try<Unit, ImportError> {
-        val asset = if (format == null) {
+    ) {
+        val assetResult = if (format == null) {
             assetRetriever.retrieve(url)
         } else {
             assetRetriever.retrieve(url, format)
-        }.getOrElse {
-            return Try.failure(ImportError.Publication(PublicationError(it)))
         }
 
-        publicationOpener.open(asset, allowUserInteraction = false).onSuccess { publication ->
+        val asset = assetResult.getOrNull()
+        if (asset == null) {
+            channel.send(Event.ImportPublicationError(ImportError.Publication(PublicationError.Unexpected(DebugError("Failed to retrieve asset")))))
+            return
+        }
 
-            val coverFile = coverStorage.storeCover(publication, coverUrl)
-                .getOrElse {
-                    return Try.failure(ImportError.FileSystem(FileSystemError.IO(it)))
-                }
+        val openResult = publicationOpener.open(asset, allowUserInteraction = false)
+        val publication = openResult.getOrNull()
+        if (publication == null) {
+            channel.send(Event.ImportPublicationError(ImportError.Publication(PublicationError.Unexpected(DebugError("Failed to open publication")))))
+            return
+        }
 
-            val bookId = bookRepository.insertBook(
-                url,
-                asset.format.mediaType,
-                publication,
-                coverFile
-            )
+        val coverFileResult = coverStorage.storeCover(publication, coverUrl)
+        val coverFile = coverFileResult.getOrNull()
+        if (coverFile == null) {
+            channel.send(Event.ImportPublicationError(ImportError.FileSystem(FileSystemError.IO(Exception("Failed to store cover")))))
+            return
+        }
 
-            if (bookId == -1L) {
+        Timber.d("=== BOOK IMPORT DEBUG ===")
+        Timber.d("Publication title: ${publication.metadata.title}")
+        Timber.d("Publication metadata.identifier: ${publication.metadata.identifier}")
+
+        val title = publication.metadata.title ?: ""
+        val author = publication.metadata.authors.firstOrNull()?.name ?: ""
+        val identifierFromMetadata = publication.metadata.identifier
+
+        val finalIdentifier = if (!identifierFromMetadata.isNullOrBlank()) {
+            Timber.d("Using ISBN from metadata: $identifierFromMetadata")
+            identifierFromMetadata
+        } else {
+            val generated = generateServerIdentifier(title, author)
+            Timber.d("Generated identifier: $generated")
+            generated
+        }
+
+        // 1. Поиск по identifier (ISBN из метаданных)
+        Timber.d("Step 1: Searching by identifier: $finalIdentifier")
+        val existingBook = bookRepository.getBookByIdentifier(finalIdentifier)
+
+        if (existingBook != null) {
+            val bookId = existingBook.id
+            if (bookId != null) {
+                Timber.d("✅ Found by identifier! ID: $bookId, linking file")
+
+                // Сохраняем обложку в постоянное место
+                val permanentCoverPath = saveCoverPermanently(coverFile, bookId)
+
+                bookRepository.updateBook(
+                    existingBook.copy(
+                        href = url.toString(),
+                        cover = permanentCoverPath,
+                        hasFile = true,
+                        isDeleted = false,
+                        lastSynced = System.currentTimeMillis(),
+                        pagesRead = existingBook.pagesRead,
+                        readingTime = existingBook.readingTime,
+                        currentPage = existingBook.currentPage,  // ← Это важно!
+                        totalPages = existingBook.totalPages.takeIf { it > 0 } ?: publication.positions().size,
+                        lastReadDate = existingBook.lastReadDate,
+                        progression = existingBook.progression,
+
+                    )
+                )
+
+                bookRepository.attachFileToBookById(
+                    bookId = bookId,
+                    href = url.toString(),
+                    cover = permanentCoverPath,
+                    mediaType = asset.format.mediaType.toString()
+                )
+
                 coverFile.delete()
-                return Try.failure(ImportError.Database(DebugError("Could not insert book into database.")))
+                channel.send(Event.ImportPublicationSuccess)
+                return
             }
         }
-            .onFailure {
-                return Try.failure(ImportError.Publication(PublicationError(it)))
-            }
 
-        return Try.success(Unit)
+        // 2. Поиск по serverIdentifier (то, что пришло с сервера)
+        Timber.d("Step 2: Searching by serverIdentifier: $finalIdentifier")
+        val existingByServerId = bookRepository.findBookByServerIdentifier(finalIdentifier)
+
+        if (existingByServerId != null) {
+            val bookId = existingByServerId.id
+            if (bookId != null) {
+                Timber.d("✅ Found by serverIdentifier! ID: $bookId, linking file")
+
+                val permanentCoverPath = saveCoverPermanently(coverFile, bookId)
+
+                bookRepository.updateBook(
+                    existingByServerId.copy(
+                        href = url.toString(),
+                        cover = permanentCoverPath,
+                        hasFile = true,
+                        isDeleted = false,
+                        lastSynced = System.currentTimeMillis()
+                    )
+                )
+
+                bookRepository.attachFileToBookById(
+                    bookId = bookId,
+                    href = url.toString(),
+                    cover = permanentCoverPath,
+                    mediaType = asset.format.mediaType.toString()
+                )
+
+                coverFile.delete()
+                channel.send(Event.ImportPublicationSuccess)
+                return
+            }
+        }
+
+        // 3. Поиск по названию + автору (показываем диалог)
+        Timber.d("Step 3: Searching by title+author: '$title' '$author'")
+
+        if (!title.isNullOrBlank()) {
+            val existingByTitle = bookRepository.findBookByTitleAndAuthor(title, author)
+
+            if (existingByTitle != null) {
+                Timber.d("⚠️ Found by title+author! ID: ${existingByTitle.id}, need user decision")
+
+                val newBookData = NewBookData(
+                    url = url,
+                    format = asset.format,
+                    coverUrl = coverUrl,
+                    publication = publication,
+                    coverFile = coverFile
+                )
+
+                channel.send(Event.ShowLinkDialog(existingByTitle, newBookData))
+                return
+            }
+        }
+
+        // 4. Создаём новую книгу
+        Timber.d("❌ No existing book found, creating new")
+
+        val bookId = bookRepository.insertBook(
+            url,
+            asset.format.mediaType,
+            publication,
+            coverFile
+        )
+
+        if (bookId == -1L) {
+            coverFile.delete()
+            channel.send(Event.ImportPublicationError(ImportError.Database(DebugError("Could not insert book into database."))))
+            return
+        }
+
+        channel.send(Event.ImportPublicationSuccess)
     }
 
+    private fun generateServerIdentifier(title: String, author: String): String {
+        val normalizedTitle = title.lowercase().trim().replace(Regex("[^a-z0-9]"), "")
+        val normalizedAuthor = author.lowercase().trim().replace(Regex("[^a-z0-9]"), "")
+        return "${normalizedTitle}_${normalizedAuthor}".take(100)
+    }
 
+    private fun saveCoverPermanently(tempCoverFile: File, bookId: Long): String {
+        val coversDir = coverStorage.getCoversDirectory()
+        val permanentFile = File(coversDir, "cover_$bookId.${tempCoverFile.extension}")
 
+        // Если файл уже существует в постоянном месте, удаляем временный
+        if (permanentFile.exists()) {
+            tempCoverFile.delete()
+            return permanentFile.absolutePath
+        }
 
+        // Копируем временный файл в постоянное место
+        tempCoverFile.copyTo(permanentFile, overwrite = true)
+        return permanentFile.absolutePath
+    }
+
+    suspend fun attachFileToExistingBook(
+        serverIdentifier: String,
+        href: String,
+        cover: String,
+        mediaType: String
+    ) {
+        bookRepository.attachFileToExistingBook(serverIdentifier, href, cover, mediaType)
+    }
+
+    suspend fun refreshBooks() {
+        bookRepository.books().firstOrNull()
+    }
 
     suspend fun deleteBook(book: Book) {
         val id = book.id!!
-        // Мягкое удаление - только флаг, НЕ удаляем статистику
         bookRepository.softDeleteBook(id)
         bookRepository.updateHasFile(id, false)
 
-        // Файлы удаляем, но статистика остаётся в БД
         tryOrLog { book.url.toFile()?.delete() }
         tryOrLog { File(book.cover).delete() }
 
         Timber.d("Book soft deleted (statistics preserved): $id, title=${book.title}")
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/domain/ReadUserError.kt
@@ -21517,9 +21964,9 @@ dependencies {
 ================================================================================
 СТАТИСТИКА
 ================================================================================
-Всего файлов в проекте: 2855
+Всего файлов в проекте: 2876
 Обработано файлов: 0
 Пропущено файлов: 0
 Всего строк кода: 0
-Дата создания отчета: Sat Apr 25 07:11:10 PM +05 2026
+Дата создания отчета: Tue Apr 28 05:38:21 PM +05 2026
 ================================================================================
