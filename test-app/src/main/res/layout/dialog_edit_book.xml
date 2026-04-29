@@ -12,14 +12,12 @@
         android:layout_height="wrap_content"
         android:hint="Название"
         app:errorEnabled="true">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/edit_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
             android:maxLines="1" />
-
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
@@ -29,14 +27,27 @@
         android:layout_marginTop="16dp"
         android:hint="Автор"
         app:errorEnabled="true">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/edit_author"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
             android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Новое поле для ввода текущей страницы -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/pages_read_text_input_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="Текущая страница">
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/edit_pages_read"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:maxLines="1" />
     </com.google.android.material.textfield.TextInputLayout>
 
 </LinearLayout>

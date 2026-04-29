@@ -15,13 +15,13 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Book
 
 class EditBookDialogFragment : DialogFragment() {
-
     private val bookshelfViewModel: BookshelfViewModel by activityViewModels()
-
     private lateinit var book: Book
     private lateinit var titleInput: TextInputEditText
     private lateinit var authorInput: TextInputEditText
     private lateinit var titleLayout: TextInputLayout
+    // Добавляем поле для страниц
+    private lateinit var pagesInput: TextInputEditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,9 +40,14 @@ class EditBookDialogFragment : DialogFragment() {
         titleInput = view.findViewById(R.id.edit_title)
         authorInput = view.findViewById(R.id.edit_author)
 
+        // Инициализируем новое поле
+        pagesInput = view.findViewById(R.id.edit_pages_read)
+
         // Заполняем текущими значениями
         titleInput.setText(book.title ?: "")
         authorInput.setText(book.author ?: "")
+        // Устанавливаем текущее значение страниц (если 0, оставляем поле пустым для удобства или ставим 0)
+        pagesInput.setText(if (book.pagesRead > 0) book.pagesRead.toString() else "")
 
         val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle("Редактирование книги")
@@ -59,7 +64,6 @@ class EditBookDialogFragment : DialogFragment() {
         dialog.setOnShowListener {
             val positiveButton = (dialog as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE)
             positiveButton.isEnabled = !titleInput.text.isNullOrBlank()
-
             titleInput.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -74,7 +78,6 @@ class EditBookDialogFragment : DialogFragment() {
                 }
             })
         }
-
         return dialog
     }
 
@@ -87,13 +90,16 @@ class EditBookDialogFragment : DialogFragment() {
 
         val newAuthor = authorInput.text?.toString()?.trim()
 
-        bookshelfViewModel.updateBookMetadata(book.id!!, newTitle, newAuthor)
+        // Обрабатываем ввод страниц (если пусто, считаем что 0)
+        val newPagesRead = pagesInput.text?.toString()?.toIntOrNull() ?: 0
+
+        // Передаем новое значение в ViewModel
+        bookshelfViewModel.updateBookMetadata(book.id!!, newTitle, newAuthor, newPagesRead)
         dismiss()
     }
 
     companion object {
         private const val ARG_BOOK = "book"
-
         fun newInstance(book: Book): EditBookDialogFragment {
             val fragment = EditBookDialogFragment()
             val args = Bundle()

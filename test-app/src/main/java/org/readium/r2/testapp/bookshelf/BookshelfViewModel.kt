@@ -15,27 +15,30 @@ import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.EventChannel
 
 class BookshelfViewModel(application: Application) : AndroidViewModel(application) {
-
     private val app get() = getApplication<org.readium.r2.testapp.Application>()
-
     val channel = EventChannel(Channel<Event>(Channel.BUFFERED), viewModelScope)
     val books = app.bookRepository.books()
 
-    fun updateBookMetadata(bookId: Long, title: String, author: String?) {
+    // Обновленная функция с параметром pagesRead
+    fun updateBookMetadata(bookId: Long, title: String, author: String?, pagesRead: Int) {
         viewModelScope.launch {
             try {
+                // Обновляем название и автора
                 app.bookRepository.updateBookTitleAndAuthor(bookId, title, author)
+                // Обновляем номер страницы
+                app.bookRepository.updateBookPages(bookId, pagesRead)
+
                 app.bookRepository.books().firstOrNull()
-                android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author")
+                android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author, pages=$pagesRead")
             } catch (e: Exception) {
                 android.util.Log.e("BookshelfViewModel", "Failed to update book metadata", e)
             }
         }
     }
 
+    // ... остальной код без изменений
     fun deletePublication(book: Book) = viewModelScope.launch {
         app.bookshelf.deleteBook(book)
-        // После удаления обновляем список
         app.bookRepository.books().firstOrNull()
     }
 

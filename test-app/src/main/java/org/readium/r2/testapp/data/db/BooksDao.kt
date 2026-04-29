@@ -111,7 +111,7 @@ interface BooksDao {
     @Query("UPDATE books SET reading_time = :seconds WHERE id = :bookId")
     suspend fun updateBookReadingTime(bookId: Long, seconds: Long)
 
-    @Query("UPDATE books SET pages_read = :pages WHERE id = :bookId")
+    @Query("UPDATE books SET pages_read = :pages, progression = '{}' WHERE id = :bookId")
     suspend fun updateBookPages(bookId: Long, pages: Int)
 
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId AND date = :date")
