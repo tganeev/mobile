@@ -86,6 +86,13 @@ class AlarmAlertActivity : Activity() {
         }
     }
 
+    private fun cancelNotification() {
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.cancel(AlarmReceiver.NOTIFICATION_ID)
+        } catch (e: Exception) { e.printStackTrace() }
+    }
+
     private fun onPrimaryAction() {
         stopAlarm()
 
@@ -107,6 +114,7 @@ class AlarmAlertActivity : Activity() {
 
     private fun onSecondaryAction() {
         stopAlarm()
+        cancelNotification()
 
         val snoozeMinutes = if (alarmType == "morning") 5 else 15
 
