@@ -93,7 +93,7 @@ class HistoryTableAdapter(
     private fun createDynamicHeaderRow(dates: List<LocalDate>): LinearLayout {
         return LinearLayout(headerDynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(createDynamicCell("Identifier", 150, isHeader = true, gravity = Gravity.CENTER))
+            //addView(createDynamicCell("Identifier", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Автор", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Статус", 100, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Категория", 80, isHeader = true, gravity = Gravity.CENTER))
@@ -196,7 +196,7 @@ class HistoryTableAdapter(
     private fun createDynamicRow(book: BookProgress, dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            //addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
             addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER))
             addView(createDynamicCell(book.status, 100, gravity = Gravity.CENTER))
             addView(createDynamicCell(book.category, 80, gravity = Gravity.CENTER))
