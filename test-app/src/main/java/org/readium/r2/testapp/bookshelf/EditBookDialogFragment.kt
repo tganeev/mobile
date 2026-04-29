@@ -89,12 +89,16 @@ class EditBookDialogFragment : DialogFragment() {
         }
 
         val newAuthor = authorInput.text?.toString()?.trim()
-
-        // Обрабатываем ввод страниц (если пусто, считаем что 0)
         val newPagesRead = pagesInput.text?.toString()?.toIntOrNull() ?: 0
 
-        // Передаем новое значение в ViewModel
-        bookshelfViewModel.updateBookMetadata(book.id!!, newTitle, newAuthor, newPagesRead)
+        // ПЕРЕДАЁМ ТЕКУЩЕЕ ЗНАЧЕНИЕ (book.pagesRead) ДЛЯ КОРРЕКЦИИ СТАТИСТИКИ
+        bookshelfViewModel.updateBookMetadata(
+            book.id!!,
+            newTitle,
+            newAuthor,
+            newPagesRead,
+            book.pagesRead
+        )
         dismiss()
     }
 

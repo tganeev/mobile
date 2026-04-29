@@ -136,6 +136,10 @@ class BookRepository(
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>> =
         booksDao.getReadingStatsForBook(bookId)
 
+    suspend fun upsertReadingStat(stat: ReadingStat) {
+        booksDao.upsertReadingStat(stat)
+    }
+
     fun getAllReadingStats(): Flow<List<ReadingStat>> = booksDao.getAllReadingStats()
 
     suspend fun saveReadingStat(bookId: Long, date: LocalDate, pagesRead: Int, hoursRead: Double) {

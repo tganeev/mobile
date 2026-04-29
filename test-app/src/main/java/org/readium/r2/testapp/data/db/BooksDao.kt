@@ -51,6 +51,8 @@ interface BooksDao {
     )
     suspend fun saveProgression(locator: String, id: Long)
 
+
+
     // ===== МЕТОДЫ ДЛЯ ЗАКЛАДОК =====
     @Query("SELECT * FROM " + Bookmark.TABLE_NAME + " WHERE " + Bookmark.BOOK_ID + " = :bookId")
     fun getBookmarksForBook(bookId: Long): Flow<List<Bookmark>>
@@ -101,6 +103,10 @@ interface BooksDao {
 
     @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalPagesRead(bookId: Long): Int?
+
+    // НОВЫЙ МЕТОД: Обновляет или создаёт статистику за конкретную дату
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertReadingStat(stat: ReadingStat)
 
     @Query("SELECT SUM(hours_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalHoursRead(bookId: Long): Double?
