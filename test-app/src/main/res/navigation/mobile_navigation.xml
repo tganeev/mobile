@@ -23,7 +23,7 @@
     <fragment
         android:id="@+id/historyFragment"
         android:name="org.readium.r2.testapp.history.HistoryFragment"
-        android:label="История чтения"
+        android:label="История"
         tools:layout="@layout/fragment_history" />
 
     <!-- Будильник - настройки -->

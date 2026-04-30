@@ -14,13 +14,23 @@
         android:gravity="center_vertical"
         android:padding="12dp"
         android:background="?attr/colorSurface">
-        <Button
+
+        <!-- Кнопка "Предыдущий месяц" -->
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/prevMonthButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:text="◀"
-            android:background="@android:color/transparent"
-            android:textSize="24sp" />
+            android:insetLeft="0dp"
+            android:insetTop="0dp"
+            android:insetRight="0dp"
+            android:insetBottom="0dp"
+            android:backgroundTint="@android:color/transparent"
+            app:icon="@drawable/ic_baseline_arrow_back_24"
+            app:iconTint="@android:color/white"
+            app:iconPadding="0dp"
+            app:cornerRadius="24dp"
+            android:contentDescription="Предыдущий месяц" />
+
         <TextView
             android:id="@+id/periodTitle"
             android:layout_width="0dp"
@@ -30,20 +40,22 @@
             android:textSize="18sp"
             android:textStyle="bold"
             android:gravity="center" />
-        <Button
+
+        <!-- Кнопка "Следующий месяц" -->
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/nextMonthButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:text="▶"
-            android:background="@android:color/transparent"
-            android:textSize="24sp" />
-        <ImageButton
-            android:id="@+id/calendarButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_baseline_calendar_24"
-            android:background="@android:color/transparent"
-            android:contentDescription="Выбрать период" />
+            android:insetLeft="0dp"
+            android:insetTop="0dp"
+            android:insetRight="0dp"
+            android:insetBottom="0dp"
+            android:backgroundTint="@android:color/transparent"
+            app:icon="@drawable/ic_baseline_arrow_forward_24"
+            app:iconTint="@android:color/white"
+            app:iconPadding="0dp"
+            app:cornerRadius="24dp"
+            android:contentDescription="Следующий месяц" />
     </LinearLayout>
 
     <!-- Поле поиска -->
@@ -70,19 +82,6 @@
             android:cursorVisible="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
-    <!-- Кнопка Статистика -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/statsToggleButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
-        android:text="📊 Статистика"
-        android:backgroundTint="#00CC00"
-        android:textColor="@android:color/white"
-        app:icon="@drawable/ic_baseline_show_chart_24"
-        app:iconGravity="textStart" />
 
     <!-- ВЕРХНИЙ ЗАГОЛОВОК ТАБЛИЦЫ (Всегда виден) -->
     <LinearLayout

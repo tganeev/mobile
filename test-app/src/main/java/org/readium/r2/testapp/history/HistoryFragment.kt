@@ -22,7 +22,10 @@ import org.readium.r2.testapp.reader.ReaderActivityContract
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import android.app.DatePickerDialog
+import android.content.Context
+import android.graphics.drawable.Drawable
 import android.view.ViewTreeObserver
+import androidx.core.graphics.drawable.DrawableCompat
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -32,6 +35,7 @@ class HistoryFragment : Fragment() {
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
     private var showStats = false
+    private var isSearchVisible = false
 
     // Слушатель для удаления в onDestroyView
     private var scrollChangeListener: ViewTreeObserver.OnScrollChangedListener? = null
@@ -48,9 +52,12 @@ class HistoryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setHasOptionsMenu(true)
+
+        binding.searchLayout.visibility = View.GONE
+
         setupPeriodControls()
         setupSearch()
-        setupStatsToggle()
+
         setupFocusHandling()
         setupObservers()
         setupScrollViewSync()
@@ -70,16 +77,65 @@ class HistoryFragment : Fragment() {
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_history, menu)
+
+        // Окрашиваем все иконки меню в @color/purple_501
+        val targetColor = ContextCompat.getColor(requireContext(), R.color.white)
+        for (i in 0 until menu.size()) {
+            val item = menu.getItem(i)
+            val originalIcon: Drawable? = item.icon
+            originalIcon?.let { icon ->
+                val wrappedIcon = DrawableCompat.wrap(icon.mutate())
+                DrawableCompat.setTint(wrappedIcon, targetColor)
+                item.icon = wrappedIcon
+            }
+        }
+
         super.onCreateOptionsMenu(menu, inflater)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+
+            R.id.action_select_date -> {
+                showDateRangePicker()
+                true
+            }
+
+            R.id.action_toggle_stats -> {
+                showStats = !showStats
+                updateStatsVisibility()
+                // Опционально: можно менять иконку или показывать подсказку
+                // item.title = if (showStats) "Скрыть статистику" else "Показать статистику"
+                true
+            }
+
+            R.id.action_search -> {
+                toggleSearchVisibility()
+                true
+            }
             R.id.action_sync_history -> {
                 syncWithServer()
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun toggleSearchVisibility() {
+        isSearchVisible = !isSearchVisible
+        binding.searchLayout.visibility = if (isSearchVisible) View.VISIBLE else View.GONE
+
+        if (isSearchVisible) {
+            // Показываем клавиатуру и фокусируемся на поле поиска
+            binding.searchInput.requestFocus()
+            val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(binding.searchInput, InputMethodManager.SHOW_IMPLICIT)
+        } else {
+            // Скрываем клавиатуру и очищаем поиск
+            val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(binding.searchInput.windowToken, 0)
+            binding.searchInput.text?.clear()
+            viewModel.updateSearchQuery("")
         }
     }
 
@@ -112,9 +168,7 @@ class HistoryFragment : Fragment() {
         binding.nextMonthButton.setOnClickListener {
             viewModel.nextMonth()
         }
-        binding.calendarButton.setOnClickListener {
-            showDateRangePicker()
-        }
+
     }
 
     private fun showDateRangePicker() {
@@ -197,25 +251,14 @@ class HistoryFragment : Fragment() {
         binding.searchInput.isCursorVisible = false
     }
 
-    private fun setupStatsToggle() {
-        binding.statsToggleButton.setOnClickListener {
-            showStats = !showStats
-            updateStatsVisibility()
-            if (showStats) {
-                binding.statsToggleButton.text = "📊 Статистика"
-                binding.statsToggleButton.icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
-            } else {
-                binding.statsToggleButton.text = "📊 Показать статистику"
-                binding.statsToggleButton.icon = null
-            }
-        }
-    }
 
     private fun updateStatsVisibility() {
         viewModel.filteredTableData.value?.let { data ->
             renderTable(data, showStats)
         }
     }
+
+
 
     private fun setupObservers() {
         lifecycleScope.launch {
