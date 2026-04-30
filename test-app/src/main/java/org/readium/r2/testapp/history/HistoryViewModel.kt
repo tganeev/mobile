@@ -152,9 +152,15 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         val bookProgressList = books.mapNotNull { book ->
             val bookId = book.id ?: return@mapNotNull null
 
-            val statusText = when {
-                book.pagesRead > 0 -> "В процессе"
-                else -> "В плане"
+            val statusText = if (book.totalPages > 0) {
+                val progress = (book.pagesRead.toDouble() / book.totalPages) * 100
+                when {
+                    progress >= 100 -> "✅ Прочитано"
+                    progress > 0 -> "📖 В процессе (${progress.toInt()}%)"
+                    else -> "📚 В плане"
+                }
+            } else {
+                if (book.pagesRead > 0) "📖 В процессе" else "📚 В плане"
             }
 
             val bookStats = statsByBook[bookId] ?: emptyList()

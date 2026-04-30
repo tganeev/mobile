@@ -84,13 +84,13 @@ class BookshelfAdapter(
                 val progress = (book.pagesRead.toDouble() / book.totalPages) * 100
                 if (progress >= 100) {
                     statusText = "✅ Прочитано"
-                    statusColor = Color.parseColor("#4CAF50") // Зеленый
+                    statusColor = Color.parseColor("#50fa4d") // Зеленый
                 } else if (progress > 0) {
                     statusText = "📖 В процессе (${progress.toInt()}%)"
                     statusColor = Color.parseColor("#FFC107") // Желтый/Оранжевый
                 } else {
-                    statusText = "📚 Не начато"
-                    statusColor = Color.parseColor("#9E9E9E") // Серый
+                    statusText = "📚 В плане"
+                    statusColor = Color.parseColor("#fef2c0") // Серый
                 }
             } else {
                 // Если страниц не указано
@@ -98,8 +98,8 @@ class BookshelfAdapter(
                     statusText = "📖 В процессе"
                     statusColor = Color.parseColor("#FFC107")
                 } else {
-                    statusText = "📚 Не начато"
-                    statusColor = Color.parseColor("#9E9E9E")
+                    statusText = "📚 В плане"
+                    statusColor = Color.parseColor("#fef2c0")
                 }
             }
             binding.bookshelfStatusText.text = statusText
