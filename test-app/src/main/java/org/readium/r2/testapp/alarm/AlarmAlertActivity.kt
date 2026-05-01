@@ -2,7 +2,6 @@ package org.readium.r2.testapp.alarm
 
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -10,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.Vibrator
+import android.util.Log
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
@@ -25,12 +25,11 @@ import java.time.LocalTime
 class AlarmAlertActivity : Activity() {
 
     private lateinit var alarmType: String
-    private var mediaPlayer: MediaPlayer? = null
     private val scope = CoroutineScope(Dispatchers.IO)
+    private var localMediaPlayer: MediaPlayer? = null
 
     companion object {
         private var isActive = false
-        private var alarmMediaPlayer: MediaPlayer? = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -66,8 +65,13 @@ class AlarmAlertActivity : Activity() {
         alarmType = intent.getStringExtra("alarm_type") ?: "morning"
 
         setupUI()
-        playAlarmSound()
-        vibrate()
+
+        // Проверяем, играет ли звук через AlarmReceiver, если нет - запускаем локально
+        if (!AlarmReceiver.isAlarmPlaying()) {
+            playLocalAlarmSound()
+        }
+
+        vibrateLocal()
 
         wakeLock.release()
     }
@@ -75,7 +79,7 @@ class AlarmAlertActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         isActive = false
-        stopAlarmSound()
+        stopAllSounds()
     }
 
     private fun setupUI() {
@@ -107,8 +111,15 @@ class AlarmAlertActivity : Activity() {
         } catch (e: Exception) { }
     }
 
+    private fun stopAllSounds() {
+        // Останавливаем звук через статический метод AlarmReceiver
+        AlarmReceiver.stopAlarmSound()
+        // Останавливаем локальный MediaPlayer
+        stopLocalAlarmSound()
+    }
+
     private fun onPrimaryAction() {
-        stopAlarmSound()
+        stopAllSounds()
         cancelNotification()
 
         scope.launch {
@@ -128,7 +139,8 @@ class AlarmAlertActivity : Activity() {
     }
 
     private fun onSecondaryAction() {
-        stopAlarmSound()
+        // Останавливаем звук и вибрацию (КЛЮЧЕВОЙ МОМЕНТ!)
+        stopAllSounds()
         cancelNotification()
 
         val snoozeMinutes = if (alarmType == "morning") 5 else 15
@@ -165,18 +177,14 @@ class AlarmAlertActivity : Activity() {
                 finishAndRemoveTask()
             }
         }
-
-        finishAndRemoveTask()
     }
 
-    private fun playAlarmSound() {
+    private fun playLocalAlarmSound() {
         try {
-            stopAlarmSound()
-
             val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val uri = alarmSound ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
-            alarmMediaPlayer = MediaPlayer().apply {
+            localMediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -188,22 +196,23 @@ class AlarmAlertActivity : Activity() {
                 prepare()
                 start()
             }
+            Log.d("AlarmAlertActivity", "Local alarm sound playing")
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun stopAlarmSound() {
+    private fun stopLocalAlarmSound() {
         try {
-            alarmMediaPlayer?.let {
+            localMediaPlayer?.let {
                 if (it.isPlaying) it.stop()
                 it.release()
             }
-            alarmMediaPlayer = null
+            localMediaPlayer = null
         } catch (e: Exception) { }
     }
 
-    private fun vibrate() {
+    private fun vibrateLocal() {
         try {
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

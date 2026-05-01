@@ -1,7 +1,7 @@
 ================================================================================
 ПОЛНЫЙ ИСХОДНЫЙ КОД ANDROID STUDIO ПРОЕКТА
 ================================================================================
-Дата создания: Fri May  1 03:03:39 PM +05 2026
+Дата создания: Fri May  1 03:45:39 PM +05 2026
 Директория проекта: /opt/goinfre/kindlyfr/Projects/pkms/mobile/test-app
 ================================================================================
 
@@ -271,7 +271,7 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:theme="@style/Theme.AppCompat.Dialog"
-            android:exported="true" />/>
+            android:exported="true" />
 
     </application>
 
@@ -8374,8 +8374,6 @@ package org.readium.r2.testapp.alarm
 
 import android.Manifest
 import android.app.AlarmManager
-import android.app.AlertDialog
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8399,23 +8397,25 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentAlarmBinding
 
 class AlarmFragment : Fragment() {
-
     private var _binding: FragmentAlarmBinding? = null
     private val binding get() = _binding!!
-
     private val viewModel: AlarmViewModel by viewModels()
-
     private var isUpdatingMorningFromCode = false
     private var isUpdatingEveningFromCode = false
 
-    // Регистрируем результат запроса разрешения на уведомления
+    // Лаунчер для запроса разрешения на уведомления (Android 13+)
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             Snackbar.make(binding.root, "Разрешение на уведомления получено", Snackbar.LENGTH_SHORT).show()
+            checkAlarmPermissions() // Повторная проверка
         } else {
-            Snackbar.make(binding.root, "Для работы будильника нужно разрешение на уведомления", Snackbar.LENGTH_LONG).show()
+            Snackbar.make(
+                binding.root,
+                "Без разрешения на уведомления будильник может не показать окно на заблокированном экране",
+                Snackbar.LENGTH_LONG
+            ).show()
         }
     }
 
@@ -8430,11 +8430,10 @@ class AlarmFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         setupTimePickers()
         setupListeners()
         observeViewModel()
-        checkAllPermissions()
+        checkAlarmPermissions()
     }
 
     private fun setupTimePickers() {
@@ -8448,29 +8447,24 @@ class AlarmFragment : Fragment() {
                 viewModel.updateMorningAlarmEnabled(isChecked)
             }
         }
-
         binding.eveningAlarmSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (!isUpdatingEveningFromCode) {
                 viewModel.updateEveningAlarmEnabled(isChecked)
             }
         }
-
         binding.morningTimePicker.setOnTimeChangedListener { _, hour, minute ->
             if (!isUpdatingMorningFromCode) {
                 viewModel.updateMorningTime(hour, minute)
             }
         }
-
         binding.eveningTimePicker.setOnTimeChangedListener { _, hour, minute ->
             if (!isUpdatingEveningFromCode) {
                 viewModel.updateEveningTime(hour, minute)
             }
         }
-
         binding.historyButton.setOnClickListener {
             navigateToHistory()
         }
-
         binding.fixPermissionButton.setOnClickListener {
             openAlarmSettings()
         }
@@ -8492,7 +8486,6 @@ class AlarmFragment : Fragment() {
                 isUpdatingEveningFromCode = false
             }
         }
-
         lifecycleScope.launch {
             viewModel.toastMessage.collect { message ->
                 if (message.isNotEmpty()) {
@@ -8503,23 +8496,20 @@ class AlarmFragment : Fragment() {
         }
     }
 
-    private fun checkAllPermissions() {
-        checkNotificationPermission()
-        checkExactAlarmPermission()
-        checkBatteryOptimization()
-    }
-
-    private fun checkNotificationPermission() {
+    private fun checkAlarmPermissions() {
+        // 1. Проверка разрешений на уведомления (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
-                    Для работы будильника необходимо разрешение на показ уведомлений.
-                    Нажмите "Настроить" и разрешите уведомления.
+                    Для показа будильника на заблокированном экране необходимо разрешение на уведомления.
+                    Нажмите "Разрешить", чтобы включить уведомления.
                 """.trimIndent()
-
+                binding.fixPermissionButton.text = "Разрешить"
                 binding.fixPermissionButton.setOnClickListener {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
@@ -8527,74 +8517,77 @@ class AlarmFragment : Fragment() {
             }
         }
 
-        // Если все проверки пройдены, скрываем карточку
-        binding.permissionWarningCard.visibility = View.GONE
-    }
-
-    private fun checkExactAlarmPermission() {
+        // 2. Проверка точных будильников (Android 12+)
+        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
             if (!alarmManager.canScheduleExactAlarms()) {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
-                    Для точной работы будильника необходимо разрешение на планирование точных будильников.
-                    Нажмите "Настроить" и разрешите доступ.
+                    Для точной работы будильника необходимо разрешение.
+                    Нажмите "Настроить" и включите "Будильники и напоминания".
                 """.trimIndent()
+                binding.fixPermissionButton.text = "Настроить"
                 binding.fixPermissionButton.setOnClickListener {
                     val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                     startActivity(intent)
                 }
+                return
             }
         }
-    }
 
-    private fun checkBatteryOptimization() {
+        // 3. Проверка оптимизации батареи
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = requireContext().getSystemService(Context.POWER_SERVICE) as PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(requireContext().packageName)) {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
-                    Для работы будильника в фоновом режиме необходимо отключить оптимизацию батареи.
+                    Для работы в фоне необходимо отключить оптимизацию батареи.
                     Нажмите "Настроить" и выберите "Не оптимизировать".
                 """.trimIndent()
+                binding.fixPermissionButton.text = "Настроить"
                 binding.fixPermissionButton.setOnClickListener {
                     val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                     startActivity(intent)
                 }
+                return
             }
         }
+
+        // Если все проверки пройдены
+        binding.permissionWarningCard.visibility = View.GONE
     }
 
     private fun openAlarmSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-            startActivity(intent)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-            startActivity(intent)
+        // Определяем, какие настройки открыть
+        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+        } else {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
-
-    private fun resetNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager = requireContext().getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            try {
-                notificationManager.deleteNotificationChannel("alarm_channel")
-                notificationManager.deleteNotificationChannel("alarm_channel_important")
-            } catch (e: Exception) { }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        resetNotificationChannel()
-        checkAllPermissions()
-    }
-
 
     private fun navigateToHistory() {
         val navController = requireView().findNavController()
         navController.navigate(R.id.action_alarm_to_stats)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Проверяем разрешения при возврате на фрагмент
+        checkAlarmPermissions()
     }
 
     override fun onDestroyView() {
@@ -8827,9 +8820,6 @@ class AlarmAlertActivity : Activity() {
         val messageText = findViewById<TextView>(R.id.alarmMessage)
         val primaryButton = findViewById<Button>(R.id.primaryButton)
         val secondaryButton = findViewById<Button>(R.id.secondaryButton)
-
-        val hintText = findViewById<TextView>(R.id.alarmHint)
-        hintText?.text = "🔔 Для отметки нажмите на уведомление в шторке"
 
         if (alarmType == "morning") {
             titleText.text = "🌅 Доброе утро!"
@@ -9116,6 +9106,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.os.VibrationEffect
@@ -9124,10 +9115,11 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.readium.r2.testapp.R
+import java.io.IOException
 
 class AlarmReceiver : BroadcastReceiver() {
     companion object {
-        const val CHANNEL_ID = "alarm_channel_important"
+        const val CHANNEL_ID = "alarm_channel"
         const val NOTIFICATION_ID = 1002
         private var mediaPlayer: MediaPlayer? = null
     }
@@ -9145,19 +9137,21 @@ class AlarmReceiver : BroadcastReceiver() {
         try {
             val alarmType = intent.getStringExtra("alarm_type") ?: "morning"
 
-            // Проигрываем звук
+            // Проигрываем звук будильника
             playAlarmSound(context)
 
-            // Вибрация
+            // Вибрируем
             vibrateDevice(context)
 
-            // Создаем Intent для Activity
+            // Создаем канал уведомлений
+            createNotificationChannel(context)
+
+            // Создаем Intent для запуска Activity
             val activityIntent = Intent(context, AlarmAlertActivity::class.java).apply {
                 putExtra("alarm_type", alarmType)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
             }
 
             val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -9166,20 +9160,15 @@ class AlarmReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT
             }
 
-            val activityPendingIntent = PendingIntent.getActivity(
+            val contentPendingIntent = PendingIntent.getActivity(
                 context,
-                System.currentTimeMillis().toInt(),
+                alarmType.hashCode(),
                 activityIntent,
                 pendingIntentFlags
             )
 
-            // Создаем канал уведомлений с ВЫСОКИМ приоритетом
-            createNotificationChannel(context)
-
             val title = if (alarmType == "morning") "🌅 Доброе утро!" else "🌙 Спокойной ночи!"
             val message = if (alarmType == "morning") "Нажмите, чтобы отметить подъём" else "Нажмите, чтобы отметить отбой"
-
-            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
 
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
@@ -9188,20 +9177,18 @@ class AlarmReceiver : BroadcastReceiver() {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setAutoCancel(true)
-                .setContentIntent(activityPendingIntent)
+                .setContentIntent(contentPendingIntent)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setFullScreenIntent(activityPendingIntent, true)
-                .setSound(alarmSound)  // ← Добавить звук в уведомление
-                .setVibrate(longArrayOf(0, 500, 500, 500))
+                .setFullScreenIntent(contentPendingIntent, true)
                 .build()
 
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID, notification)
 
-            Log.d("AlarmReceiver", "Notification posted. Channel: $CHANNEL_ID")
+            Log.d("AlarmReceiver", "Notification posted - user must tap to confirm")
 
         } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Failed: ${e.message}", e)
+            Log.e("AlarmReceiver", "Failed to handle alarm", e)
         } finally {
             wakeLock.release()
         }
@@ -9226,9 +9213,9 @@ class AlarmReceiver : BroadcastReceiver() {
                 prepare()
                 start()
             }
-            Log.d("AlarmReceiver", "Sound playing")
+            Log.d("AlarmReceiver", "Alarm sound playing")
         } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Sound failed: ${e.message}", e)
+            Log.e("AlarmReceiver", "Failed to play sound", e)
         }
     }
 
@@ -9240,7 +9227,7 @@ class AlarmReceiver : BroadcastReceiver() {
             }
             mediaPlayer = null
         } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Stop sound failed", e)
+            Log.e("AlarmReceiver", "Failed to stop sound", e)
         }
     }
 
@@ -9249,13 +9236,13 @@ class AlarmReceiver : BroadcastReceiver() {
             val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(VibrationEffect.createWaveform(
-                    longArrayOf(0, 500, 500, 500, 500, 500, 500, 500),
-                    intArrayOf(0, 255, 0, 255, 0, 255, 0, 255),
+                    longArrayOf(0, 1000, 500, 1000, 500, 1000),
+                    intArrayOf(0, 255, 0, 255, 0, 255),
                     0
                 ))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 500, 500, 500, 500, 500), 0)
+                vibrator.vibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000), 0)
             }
             Log.d("AlarmReceiver", "Vibration started")
         } catch (e: Exception) {
@@ -9265,13 +9252,6 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Удаляем старый канал, если есть
-            val notificationManager = context.getSystemService(NotificationManager::class.java)
-            try {
-                notificationManager.deleteNotificationChannel("alarm_channel")
-            } catch (e: Exception) { }
-
-            // Создаем новый канал с максимальным приоритетом
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Будильник PKMS",
@@ -9279,13 +9259,11 @@ class AlarmReceiver : BroadcastReceiver() {
             ).apply {
                 description = "Будильник с отметкой времени"
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 500, 500)
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
-                setBypassDnd(true)  // Обход режима "Не беспокоить"
-                setSound(null, null)  // Звук уже через MediaPlayer
+                setBypassDnd(true)
             }
+            val notificationManager = context.getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
-            Log.d("AlarmReceiver", "Notification channel created: $CHANNEL_ID")
         }
     }
 }
@@ -22382,9 +22360,9 @@ dependencies {
 ================================================================================
 СТАТИСТИКА
 ================================================================================
-Всего файлов в проекте: 2923
+Всего файлов в проекте: 2837
 Обработано файлов: 0
 Пропущено файлов: 0
 Всего строк кода: 0
-Дата создания отчета: Fri May  1 03:04:10 PM +05 2026
+Дата создания отчета: Fri May  1 03:46:11 PM +05 2026
 ================================================================================

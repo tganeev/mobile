@@ -9,22 +9,46 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
-import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.readium.r2.testapp.R
-import java.io.IOException
 
 class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val CHANNEL_ID = "alarm_channel"
         const val NOTIFICATION_ID = 1002
+
+        // Делаем mediaPlayer внутренним, но доступным через метод
         private var mediaPlayer: MediaPlayer? = null
+        private var vibrator: Vibrator? = null
+
+        // Публичный метод для остановки звука из AlarmAlertActivity
+        @JvmStatic
+        fun stopAlarmSound() {
+            try {
+                mediaPlayer?.let {
+                    if (it.isPlaying) it.stop()
+                    it.release()
+                }
+                mediaPlayer = null
+
+                vibrator?.cancel()
+                vibrator = null
+                Log.d("AlarmReceiver", "Alarm sound stopped via static method")
+            } catch (e: Exception) {
+                Log.e("AlarmReceiver", "Failed to stop sound", e)
+            }
+        }
+
+        // Проверка, играет ли звук
+        @JvmStatic
+        fun isAlarmPlaying(): Boolean {
+            return mediaPlayer?.isPlaying == true
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -88,7 +112,7 @@ class AlarmReceiver : BroadcastReceiver() {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID, notification)
 
-            Log.d("AlarmReceiver", "Notification posted - user must tap to confirm")
+            Log.d("AlarmReceiver", "Notification posted")
 
         } catch (e: Exception) {
             Log.e("AlarmReceiver", "Failed to handle alarm", e)
@@ -99,7 +123,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun playAlarmSound(context: Context) {
         try {
-            stopAlarmSound()
+            stopAlarmSound() // Останавливаем предыдущий звук
 
             val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val uri = if (alarmSound != null) alarmSound else RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -122,30 +146,20 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun stopAlarmSound() {
-        try {
-            mediaPlayer?.let {
-                if (it.isPlaying) it.stop()
-                it.release()
-            }
-            mediaPlayer = null
-        } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Failed to stop sound", e)
-        }
-    }
-
     private fun vibrateDevice(context: Context) {
         try {
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(
-                    longArrayOf(0, 1000, 500, 1000, 500, 1000),
-                    intArrayOf(0, 255, 0, 255, 0, 255),
-                    0
-                ))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000), 0)
+            vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            vibrator?.let { v ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createWaveform(
+                        longArrayOf(0, 1000, 500, 1000, 500, 1000),
+                        intArrayOf(0, 255, 0, 255, 0, 255),
+                        0
+                    ))
+                } else {
+                    @Suppress("DEPRECATION")
+                    v.vibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000), 0)
+                }
             }
             Log.d("AlarmReceiver", "Vibration started")
         } catch (e: Exception) {
