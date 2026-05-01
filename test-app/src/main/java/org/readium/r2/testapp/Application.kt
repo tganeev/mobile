@@ -1,6 +1,7 @@
 package org.readium.r2.testapp
 
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.StrictMode
 import androidx.datastore.core.DataStore
@@ -12,8 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.BuildConfig.DEBUG
-import org.readium.r2.testapp.alarm.AlarmForegroundService
 import org.readium.r2.testapp.alarm.AlarmScheduler
+import org.readium.r2.testapp.alarm.AlarmSoundService
 import org.readium.r2.testapp.data.AlarmPreferencesDataStore
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.SleepRepository
@@ -118,16 +119,29 @@ class Application : android.app.Application() {
 
         historySyncManager = HistorySyncManager(this, this)
 
-        // Восстанавливаем будильники после установки приложения
+        // Запускаем сервис будильника при старте приложения
+        startAlarmServices()
+    }
+
+    private fun startAlarmServices() {
+        try {
+            // Запускаем AlarmSoundService в фоне
+            val intent = Intent(this, AlarmSoundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            Timber.d("AlarmSoundService started")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to start AlarmSoundService")
+        }
+
+        // Восстанавливаем будильники после перезапуска
         coroutineScope.launch(Dispatchers.IO) {
             alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
                 AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
             }
-        }
-
-        // Запускаем Foreground Service для будильника
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            AlarmForegroundService.start(this)
         }
     }
 
