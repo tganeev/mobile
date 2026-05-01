@@ -19,6 +19,8 @@ object AlarmScheduler {
             scheduleAlarm(context, time, REQUEST_CODE_MORNING, "morning")
         } else {
             cancelAlarm(context, REQUEST_CODE_MORNING)
+            // Также останавливаем сервис если он запущен
+            stopAlarmSoundService(context)
         }
     }
 
@@ -27,6 +29,7 @@ object AlarmScheduler {
             scheduleAlarm(context, time, REQUEST_CODE_EVENING, "evening")
         } else {
             cancelAlarm(context, REQUEST_CODE_EVENING)
+            stopAlarmSoundService(context)
         }
     }
 
@@ -39,19 +42,25 @@ object AlarmScheduler {
             addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
         }
 
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            flags
         )
 
         try {
-            // Используем setAlarmClock для максимального приоритета
+            // Используем setAlarmClock для максимальной надежности
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val alarmInfo = AlarmManager.AlarmClockInfo(triggerTime, pendingIntent)
                 alarmManager.setAlarmClock(alarmInfo, pendingIntent)
-                android.util.Log.d("AlarmScheduler", "Alarm set with setAlarmClock at ${java.util.Date(triggerTime)}")
+                android.util.Log.d("AlarmScheduler", "Alarm set with setAlarmClock for $type at ${java.util.Date(triggerTime)}")
             } else {
                 alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
             }
@@ -85,14 +94,30 @@ object AlarmScheduler {
     private fun cancelAlarm(context: Context, requestCode: Int) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, AlarmReceiver::class.java)
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            flags
         )
         alarmManager.cancel(pendingIntent)
         pendingIntent.cancel()
+    }
+
+    private fun stopAlarmSoundService(context: Context) {
+        try {
+            val intent = Intent(context, AlarmSoundService::class.java).apply {
+                action = AlarmSoundService.ACTION_STOP_ALARM
+            }
+            context.stopService(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("AlarmScheduler", "Failed to stop sound service", e)
+        }
     }
 
     fun snoozeAlarm(context: Context, type: String, minutes: Int) {
@@ -101,13 +126,20 @@ object AlarmScheduler {
 
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("alarm_type", type)
+            addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        }
+
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            flags
         )
 
         val snoozeTime = System.currentTimeMillis() + (minutes * 60 * 1000)
@@ -125,12 +157,11 @@ object AlarmScheduler {
                 pendingIntent
             )
         }
+        android.util.Log.d("AlarmScheduler", "Snooze set for ${minutes} minutes")
     }
 
     fun rescheduleAllAlarms(context: Context, prefs: AlarmPreferencesDataStore.AlarmPreferences) {
         scheduleMorningAlarm(context, prefs.morningTime, prefs.isMorningEnabled)
         scheduleEveningAlarm(context, prefs.eveningTime, prefs.isEveningEnabled)
     }
-
-
 }
