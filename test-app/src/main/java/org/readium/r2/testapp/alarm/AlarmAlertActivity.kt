@@ -2,6 +2,7 @@ package org.readium.r2.testapp.alarm
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -20,7 +21,6 @@ import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.R
 import java.time.LocalDate
 import java.time.LocalTime
-import kotlinx.coroutines.withContext
 
 class AlarmAlertActivity : Activity() {
 
@@ -28,24 +28,38 @@ class AlarmAlertActivity : Activity() {
     private var mediaPlayer: MediaPlayer? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
+    companion object {
+        private var isActive = false
+        private var alarmMediaPlayer: MediaPlayer? = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Максимальные флаги для пробуждения экрана
+        if (isActive) {
+            finish()
+            return
+        }
+        isActive = true
+
+        // Показываем поверх блокировки
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
 
-        // Пробуждаем устройство
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "AlarmAlertActivity::wakelock"
         )
-        wakeLock.acquire(10_000)
+        wakeLock.acquire(30_000)
 
         setContentView(R.layout.activity_alarm_alert)
 
@@ -55,8 +69,13 @@ class AlarmAlertActivity : Activity() {
         playAlarmSound()
         vibrate()
 
-        // Освобождаем wakelock через 10 секунд
         wakeLock.release()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isActive = false
+        stopAlarmSound()
     }
 
     private fun setupUI() {
@@ -65,36 +84,35 @@ class AlarmAlertActivity : Activity() {
         val primaryButton = findViewById<Button>(R.id.primaryButton)
         val secondaryButton = findViewById<Button>(R.id.secondaryButton)
 
+        val hintText = findViewById<TextView>(R.id.alarmHint)
+        hintText?.text = "🔔 Для отметки нажмите на уведомление в шторке"
+
         if (alarmType == "morning") {
             titleText.text = "🌅 Доброе утро!"
-            messageText.text = "Время просыпаться"
-            primaryButton.text = "Встаю"
-            secondaryButton.text = "Остаюсь лежать"
+            messageText.text = "Отметить подъём?"
+            primaryButton.text = "✅ Встаю"
+            secondaryButton.text = "⏰ Остаюсь лежать"
         } else {
             titleText.text = "🌙 Спокойной ночи!"
-            messageText.text = "Время ложиться спать"
-            primaryButton.text = "Ложусь"
-            secondaryButton.text = "Не ложусь"
+            messageText.text = "Отметить отбой?"
+            primaryButton.text = "✅ Ложусь"
+            secondaryButton.text = "❌ Не ложусь"
         }
 
-        primaryButton.setOnClickListener {
-            onPrimaryAction()
-        }
-
-        secondaryButton.setOnClickListener {
-            onSecondaryAction()
-        }
+        primaryButton.setOnClickListener { onPrimaryAction() }
+        secondaryButton.setOnClickListener { onSecondaryAction() }
     }
 
     private fun cancelNotification() {
         try {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             notificationManager.cancel(AlarmReceiver.NOTIFICATION_ID)
-        } catch (e: Exception) { e.printStackTrace() }
+        } catch (e: Exception) { }
     }
 
     private fun onPrimaryAction() {
-        stopAlarm()
+        stopAlarmSound()
+        cancelNotification()
 
         scope.launch {
             val app = application as Application
@@ -109,11 +127,11 @@ class AlarmAlertActivity : Activity() {
             }
         }
 
-        finish()
+        finishAndRemoveTask()
     }
 
     private fun onSecondaryAction() {
-        stopAlarm()
+        stopAlarmSound()
         cancelNotification()
 
         val snoozeMinutes = if (alarmType == "morning") 5 else 15
@@ -122,13 +140,10 @@ class AlarmAlertActivity : Activity() {
             val app = application as Application
             val today = LocalDate.now()
 
-            // Для вечернего будильника при выборе "Не ложусь" — помечаем как пропущенный
             if (alarmType == "evening") {
-                // Сохраняем специальное значение, означающее "пропущено"
                 app.sleepRepository.markBedTimeAsMissing(today)
             }
 
-            // Получаем текущий счётчик откладываний
             var snoozeCount = 0
             app.alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
                 snoozeCount = prefs.snoozeCount
@@ -136,53 +151,35 @@ class AlarmAlertActivity : Activity() {
             }
 
             if (snoozeCount >= 2) {
-                withContext(Dispatchers.Main) {
-                    showReminderDialog()
+                runOnUiThread {
+                    AlertDialog.Builder(this@AlarmAlertActivity)
+                        .setTitle("Напоминание")
+                        .setMessage(if (alarmType == "morning")
+                            "Вы несколько раз отложили будильник. Укажите фактическое время подъёма в статистике."
+                        else
+                            "Вы несколько раз отложили будильник. Укажите фактическое время отбоя в статистике.")
+                        .setPositiveButton("OK") { _, _ -> finishAndRemoveTask() }
+                        .setCancelable(false)
+                        .show()
                 }
             } else {
-                AlarmScheduler.snoozeAlarm(
-                    this@AlarmAlertActivity,
-                    alarmType,
-                    snoozeMinutes
-                )
+                AlarmScheduler.snoozeAlarm(this@AlarmAlertActivity, alarmType, snoozeMinutes)
                 app.alarmPreferencesDataStore.incrementSnoozeCount()
-                withContext(Dispatchers.Main) {
-                    finish()
-                }
+                finishAndRemoveTask()
             }
         }
 
-        finish()
-    }
-
-    private fun showReminderDialog() {
-        runOnUiThread {
-            val message = if (alarmType == "morning") {
-                "Вы несколько раз отложили будильник. Пожалуйста, укажите фактическое время подъёма."
-            } else {
-                "Вы несколько раз отложили будильник. Пожалуйста, укажите фактическое время отбоя."
-            }
-
-            AlertDialog.Builder(this)
-                .setTitle("Напоминание")
-                .setMessage(message)
-                .setPositiveButton("Указать время") { _, _ ->
-                    finish()
-                }
-                .setNegativeButton("Позже") { _, _ ->
-                    finish()
-                }
-                .setCancelable(false)
-                .show()
-        }
+        finishAndRemoveTask()
     }
 
     private fun playAlarmSound() {
         try {
+            stopAlarmSound()
+
             val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val uri = alarmSound ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
-            mediaPlayer = MediaPlayer().apply {
+            alarmMediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -199,39 +196,25 @@ class AlarmAlertActivity : Activity() {
         }
     }
 
+    private fun stopAlarmSound() {
+        try {
+            alarmMediaPlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.release()
+            }
+            alarmMediaPlayer = null
+        } catch (e: Exception) { }
+    }
+
     private fun vibrate() {
         try {
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(android.os.VibrationEffect.createOneShot(3000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(5000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(3000)
+                vibrator.vibrate(5000)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun stopAlarm() {
-        try {
-            mediaPlayer?.let {
-                if (it.isPlaying) {
-                    it.stop()
-                }
-                it.release()
-            }
-            mediaPlayer = null
-
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            vibrator.cancel()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        stopAlarm()
+        } catch (e: Exception) { }
     }
 }
