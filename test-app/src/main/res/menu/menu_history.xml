@@ -6,7 +6,7 @@
         android:id="@+id/action_select_date"
         android:title="Выбрать даты"
         android:icon="@drawable/ic_baseline_calendar_24"
-        app:showAsAction="always" />
+        app:showAsAction="ifRoom" />
     <item
         android:id="@+id/action_search"
         android:title="Поиск"
@@ -16,11 +16,11 @@
         android:id="@+id/action_toggle_stats"
         android:title="Статистика"
         android:icon="@drawable/ic_baseline_show_chart_24"
-        app:showAsAction="always" />
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/action_sync_history"
         android:title="Синхронизация"
         android:icon="@drawable/ic_baseline_file_download_24"
-        app:showAsAction="always" />
+        app:showAsAction="ifRoom" />
 </menu>

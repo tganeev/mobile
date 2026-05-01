@@ -8,7 +8,21 @@
 
     <!-- Base application theme. -->
     <style name="AppTheme" parent="Theme.Material3.DayNight">
+        <!-- Кастомный тулбар -->
+        <item name="android:windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="actionBarStyle">@style/AppTheme.ActionBar</item>
+    </style>
 
+    <style name="AppTheme.ActionBar" parent="Widget.AppCompat.ActionBar">
+        <item name="background">@drawable/toolbar_3d_background</item>
+    </style>
+
+
+    <!-- Стиль для круглой фотографии -->
+    <style name="CircleImage" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
     </style>
 
 </resources>

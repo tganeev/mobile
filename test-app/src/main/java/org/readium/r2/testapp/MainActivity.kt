@@ -4,20 +4,16 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.navigateUp
-import com.google.android.material.snackbar.Snackbar
-import kotlinx.coroutines.launch
 import org.readium.r2.testapp.bookshelf.BookshelfFragment
 import org.readium.r2.testapp.databinding.ActivityMainBinding
 
@@ -34,6 +30,10 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Настраиваем кастомный тулбар
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayShowTitleEnabled(false)
+
         ViewCompat.setOnApplyWindowInsetsListener(binding.container) { v, insets ->
             val statusBars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             v.setPadding(statusBars.left, statusBars.top, statusBars.right, statusBars.bottom)
@@ -48,10 +48,6 @@ class MainActivity : AppCompatActivity() {
         appBarConfiguration = AppBarConfiguration(
             setOf(
                 R.id.menu_fragment,
-                //R.id.bookshelf_fragment,
-                //R.id.historyFragment,
-               // R.id.alarm_fragment,
-                //R.id.sleepStatsFragment
             )
         )
         setupActionBarWithNavController(navController, appBarConfiguration)

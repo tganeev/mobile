@@ -1,7 +1,7 @@
 ================================================================================
 ПОЛНЫЙ ИСХОДНЫЙ КОД ANDROID STUDIO ПРОЕКТА
 ================================================================================
-Дата создания: Fri May  1 03:45:39 PM +05 2026
+Дата создания: Fri May  1 08:06:33 PM +05 2026
 Директория проекта: /opt/goinfre/kindlyfr/Projects/pkms/mobile/test-app
 ================================================================================
 
@@ -8218,6 +8218,8 @@ object AlarmScheduler {
             scheduleAlarm(context, time, REQUEST_CODE_MORNING, "morning")
         } else {
             cancelAlarm(context, REQUEST_CODE_MORNING)
+            // Также останавливаем сервис если он запущен
+            stopAlarmSoundService(context)
         }
     }
 
@@ -8226,6 +8228,7 @@ object AlarmScheduler {
             scheduleAlarm(context, time, REQUEST_CODE_EVENING, "evening")
         } else {
             cancelAlarm(context, REQUEST_CODE_EVENING)
+            stopAlarmSoundService(context)
         }
     }
 
@@ -8238,19 +8241,25 @@ object AlarmScheduler {
             addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
         }
 
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            flags
         )
 
         try {
-            // Используем setAlarmClock для максимального приоритета
+            // Используем setAlarmClock для максимальной надежности
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val alarmInfo = AlarmManager.AlarmClockInfo(triggerTime, pendingIntent)
                 alarmManager.setAlarmClock(alarmInfo, pendingIntent)
-                android.util.Log.d("AlarmScheduler", "Alarm set with setAlarmClock at ${java.util.Date(triggerTime)}")
+                android.util.Log.d("AlarmScheduler", "Alarm set with setAlarmClock for $type at ${java.util.Date(triggerTime)}")
             } else {
                 alarmManager.set(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
             }
@@ -8284,14 +8293,30 @@ object AlarmScheduler {
     private fun cancelAlarm(context: Context, requestCode: Int) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(context, AlarmReceiver::class.java)
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            flags
         )
         alarmManager.cancel(pendingIntent)
         pendingIntent.cancel()
+    }
+
+    private fun stopAlarmSoundService(context: Context) {
+        try {
+            val intent = Intent(context, AlarmSoundService::class.java).apply {
+                action = AlarmSoundService.ACTION_STOP_ALARM
+            }
+            context.stopService(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("AlarmScheduler", "Failed to stop sound service", e)
+        }
     }
 
     fun snoozeAlarm(context: Context, type: String, minutes: Int) {
@@ -8300,13 +8325,20 @@ object AlarmScheduler {
 
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("alarm_type", type)
+            addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        }
+
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            flags
         )
 
         val snoozeTime = System.currentTimeMillis() + (minutes * 60 * 1000)
@@ -8324,14 +8356,13 @@ object AlarmScheduler {
                 pendingIntent
             )
         }
+        android.util.Log.d("AlarmScheduler", "Snooze set for ${minutes} minutes")
     }
 
     fun rescheduleAllAlarms(context: Context, prefs: AlarmPreferencesDataStore.AlarmPreferences) {
         scheduleMorningAlarm(context, prefs.morningTime, prefs.isMorningEnabled)
         scheduleEveningAlarm(context, prefs.eveningTime, prefs.isEveningEnabled)
     }
-
-
 }
 
 ================================================================================
@@ -8730,6 +8761,165 @@ class SleepRecordsAdapter(
 }
 
 ================================================================================
+ФАЙЛ: src/main/java/org/readium/r2/testapp/alarm/AlarmSoundService.kt
+ТИП: KOTLIN
+РАЗМЕР: 8.0K
+================================================================================
+
+package org.readium.r2.testapp.alarm
+
+import android.app.Service
+import android.content.Intent
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.RingtoneManager
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import org.readium.r2.testapp.R
+
+class AlarmSoundService : Service() {
+
+    companion object {
+        const val ACTION_START_ALARM = "START_ALARM"
+        const val ACTION_STOP_ALARM = "STOP_ALARM"
+        const val EXTRA_ALARM_TYPE = "alarm_type"
+
+        private const val CHANNEL_ID = "alarm_sound_channel"
+        private const val NOTIFICATION_ID = 1003
+
+        private var mediaPlayer: MediaPlayer? = null
+        private var vibrator: Vibrator? = null
+        private var wakeLock: PowerManager.WakeLock? = null
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        // Получаем wakelock для удержания CPU во время воспроизведения
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "AlarmSoundService::WakeLock"
+        )
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START_ALARM -> {
+                val alarmType = intent.getStringExtra(EXTRA_ALARM_TYPE) ?: "morning"
+                // Приобретаем wakelock
+                wakeLock?.acquire(60_000) // На 60 секунд
+                startAlarm(alarmType)
+                startForeground(NOTIFICATION_ID, createNotification(alarmType))
+                Log.d("AlarmSoundService", "Alarm started with wake lock")
+            }
+            ACTION_STOP_ALARM -> {
+                stopAlarm()
+                wakeLock?.release()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+        return START_STICKY
+    }
+
+    private fun startAlarm(alarmType: String) {
+        try {
+            stopAlarm()
+
+            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val uri = alarmSound ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+            mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                )
+                setDataSource(this@AlarmSoundService, uri)
+                isLooping = true
+                prepare()
+                start()
+            }
+
+            vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+            vibrator?.let { v ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createWaveform(
+                        longArrayOf(0, 1000, 500, 1000, 500, 1000),
+                        intArrayOf(0, 255, 0, 255, 0, 255),
+                        0
+                    ))
+                } else {
+                    @Suppress("DEPRECATION")
+                    v.vibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000), 0)
+                }
+            }
+
+            Log.d("AlarmSoundService", "Alarm started successfully")
+        } catch (e: Exception) {
+            Log.e("AlarmSoundService", "Failed to start alarm", e)
+        }
+    }
+
+    private fun stopAlarm() {
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.release()
+            }
+            mediaPlayer = null
+
+            vibrator?.cancel()
+            vibrator = null
+
+            Log.d("AlarmSoundService", "Alarm stopped")
+        } catch (e: Exception) {
+            Log.e("AlarmSoundService", "Failed to stop alarm", e)
+        }
+    }
+
+    private fun createNotification(alarmType: String): android.app.Notification {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                CHANNEL_ID,
+                "Сервис будильника",
+                android.app.NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Воспроизведение звука будильника"
+                setSound(null, null)
+                enableVibration(false)
+            }
+            val notificationManager = getSystemService(android.app.NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val title = if (alarmType == "morning") "🌅 Утренний будильник" else "🌙 Вечерний будильник"
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText("Будильник активен")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+    }
+
+    override fun onDestroy() {
+        stopAlarm()
+        wakeLock?.release()
+        super.onDestroy()
+    }
+}
+
+================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/alarm/AlarmAlertActivity.kt
 ТИП: KOTLIN
 РАЗМЕР: 8.0K
@@ -8739,14 +8929,9 @@ package org.readium.r2.testapp.alarm
 
 import android.app.Activity
 import android.content.Context
-import android.content.Intent
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
-import android.os.Vibrator
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
@@ -8762,12 +8947,10 @@ import java.time.LocalTime
 class AlarmAlertActivity : Activity() {
 
     private lateinit var alarmType: String
-    private var mediaPlayer: MediaPlayer? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
     companion object {
         private var isActive = false
-        private var alarmMediaPlayer: MediaPlayer? = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -8803,8 +8986,6 @@ class AlarmAlertActivity : Activity() {
         alarmType = intent.getStringExtra("alarm_type") ?: "morning"
 
         setupUI()
-        playAlarmSound()
-        vibrate()
 
         wakeLock.release()
     }
@@ -8812,7 +8993,6 @@ class AlarmAlertActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         isActive = false
-        stopAlarmSound()
     }
 
     private fun setupUI() {
@@ -8833,8 +9013,48 @@ class AlarmAlertActivity : Activity() {
             secondaryButton.text = "❌ Не ложусь"
         }
 
-        primaryButton.setOnClickListener { onPrimaryAction() }
-        secondaryButton.setOnClickListener { onSecondaryAction() }
+        primaryButton.setOnClickListener {
+            onPrimaryAction()
+            closeActivity()
+        }
+        secondaryButton.setOnClickListener {
+            onSecondaryAction()
+            closeActivity()
+        }
+    }
+
+    private fun closeActivity() {
+        // Метод для корректного закрытия Activity
+        runOnUiThread {
+            try {
+                // Убираем флаги перед закрытием
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    setShowWhenLocked(false)
+                    setTurnScreenOn(false)
+                }
+                window.clearFlags(
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                )
+
+                // Закрываем Activity разными способами для надежности
+                finish()
+                finishAndRemoveTask()
+
+                // Для Android 5.0+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    finishAfterTransition()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                try {
+                    finish()
+                } catch (ex: Exception) {
+                    ex.printStackTrace()
+                }
+            }
+        }
     }
 
     private fun cancelNotification() {
@@ -8845,7 +9065,8 @@ class AlarmAlertActivity : Activity() {
     }
 
     private fun onPrimaryAction() {
-        stopAlarmSound()
+        // Останавливаем звук через AlarmReceiver
+        AlarmReceiver.stopAlarmSound()
         cancelNotification()
 
         scope.launch {
@@ -8860,12 +9081,11 @@ class AlarmAlertActivity : Activity() {
                 app.sleepRepository.saveBedTime(today, now, isManual = false)
             }
         }
-
-        finishAndRemoveTask()
     }
 
     private fun onSecondaryAction() {
-        stopAlarmSound()
+        // Останавливаем звук через AlarmReceiver
+        AlarmReceiver.stopAlarmSound()
         cancelNotification()
 
         val snoozeMinutes = if (alarmType == "morning") 5 else 15
@@ -8892,64 +9112,15 @@ class AlarmAlertActivity : Activity() {
                             "Вы несколько раз отложили будильник. Укажите фактическое время подъёма в статистике."
                         else
                             "Вы несколько раз отложили будильник. Укажите фактическое время отбоя в статистике.")
-                        .setPositiveButton("OK") { _, _ -> finishAndRemoveTask() }
+                        .setPositiveButton("OK") { _, _ -> }
                         .setCancelable(false)
                         .show()
                 }
             } else {
                 AlarmScheduler.snoozeAlarm(this@AlarmAlertActivity, alarmType, snoozeMinutes)
                 app.alarmPreferencesDataStore.incrementSnoozeCount()
-                finishAndRemoveTask()
             }
         }
-
-        finishAndRemoveTask()
-    }
-
-    private fun playAlarmSound() {
-        try {
-            stopAlarmSound()
-
-            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            val uri = alarmSound ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
-            alarmMediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .build()
-                )
-                setDataSource(this@AlarmAlertActivity, uri)
-                isLooping = true
-                prepare()
-                start()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun stopAlarmSound() {
-        try {
-            alarmMediaPlayer?.let {
-                if (it.isPlaying) it.stop()
-                it.release()
-            }
-            alarmMediaPlayer = null
-        } catch (e: Exception) { }
-    }
-
-    private fun vibrate() {
-        try {
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(android.os.VibrationEffect.createOneShot(5000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(5000)
-            }
-        } catch (e: Exception) { }
     }
 }
 
@@ -8973,7 +9144,6 @@ import kotlinx.coroutines.launch
 import org.readium.r2.testapp.Application as App
 import org.readium.r2.testapp.data.AlarmPreferencesDataStore
 import java.time.LocalTime
-import org.readium.r2.testapp.alarm.AlarmScheduler
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.testapp.data.model.SleepRecord
 
@@ -8986,61 +9156,93 @@ class AlarmViewModel(application: Application) : AndroidViewModel(application) {
     val toastMessage = _toastMessage.asStateFlow()
     val allSleepRecords: Flow<List<SleepRecord>> = app.sleepRepository.getAllRecords()
 
-    // Исправлено: полный путь к AlarmPreferences
     val alarmPreferences = preferences.alarmPreferencesFlow
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
-            initialValue = AlarmPreferencesDataStore.AlarmPreferences()  // <-- ИСПРАВЛЕНО
+            initialValue = AlarmPreferencesDataStore.AlarmPreferences()
         )
 
     fun updateMorningAlarmEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            val current = alarmPreferences.value
-            preferences.updateMorningAlarm(enabled, current.morningTime)
+            try {
+                val current = alarmPreferences.value
+                preferences.updateMorningAlarm(enabled, current.morningTime)
 
-            // Планируем или отменяем будильник
-            AlarmScheduler.scheduleMorningAlarm(
-                getApplication(),
-                current.morningTime,
-                enabled
-            )
+                // Планируем или отменяем будильник
+                AlarmScheduler.scheduleMorningAlarm(
+                    getApplication(),
+                    current.morningTime,
+                    enabled  // enabled уже Boolean, все правильно
+                )
 
-            _toastMessage.value = if (enabled) "Утренний будильник включён" else "Утренний будильник выключен"
+                _toastMessage.value = if (enabled) "Утренний будильник включён" else "Утренний будильник выключен"
+            } catch (e: Exception) {
+                _toastMessage.value = "Ошибка: ${e.message}"
+                android.util.Log.e("AlarmViewModel", "Failed to update morning alarm", e)
+            }
         }
     }
 
     fun updateEveningAlarmEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            val current = alarmPreferences.value
-            preferences.updateEveningAlarm(enabled, current.eveningTime)
-            _toastMessage.value = if (enabled) "Вечерний будильник включён" else "Вечерний будильник выключен"
+            try {
+                val current = alarmPreferences.value
+                preferences.updateEveningAlarm(enabled, current.eveningTime)
+
+                AlarmScheduler.scheduleEveningAlarm(
+                    getApplication(),
+                    current.eveningTime,
+                    enabled  // enabled уже Boolean, все правильно
+                )
+
+                _toastMessage.value = if (enabled) "Вечерний будильник включён" else "Вечерний будильник выключен"
+            } catch (e: Exception) {
+                _toastMessage.value = "Ошибка: ${e.message}"
+                android.util.Log.e("AlarmViewModel", "Failed to update evening alarm", e)
+            }
         }
     }
 
     fun updateMorningTime(hour: Int, minute: Int) {
         viewModelScope.launch {
-            val current = alarmPreferences.value
-            val newTime = LocalTime.of(hour, minute)
-            preferences.updateMorningAlarm(current.isMorningEnabled, newTime)
+            try {
+                val current = alarmPreferences.value
+                val newTime = LocalTime.of(hour, minute)
+                preferences.updateMorningAlarm(current.isMorningEnabled, newTime)
 
-            // Перепланируем будильник
-            AlarmScheduler.scheduleMorningAlarm(
-                getApplication(),
-                newTime,
-                current.isMorningEnabled
-            )
+                AlarmScheduler.scheduleMorningAlarm(
+                    getApplication(),
+                    newTime,
+                    current.isMorningEnabled  // это Boolean, все правильно
+                )
 
-            _toastMessage.value = "Утренний будильник установлен на ${String.format("%02d:%02d", hour, minute)}"
+                _toastMessage.value = "Утренний будильник установлен на ${String.format("%02d:%02d", hour, minute)}"
+            } catch (e: Exception) {
+                _toastMessage.value = "Ошибка: ${e.message}"
+                android.util.Log.e("AlarmViewModel", "Failed to update morning time", e)
+            }
         }
     }
 
     fun updateEveningTime(hour: Int, minute: Int) {
         viewModelScope.launch {
-            val current = alarmPreferences.value
-            val newTime = LocalTime.of(hour, minute)
-            preferences.updateEveningAlarm(current.isEveningEnabled, newTime)
-            _toastMessage.value = "Вечерний будильник установлен на ${String.format("%02d:%02d", hour, minute)}"
+            try {
+                val current = alarmPreferences.value
+                val newTime = LocalTime.of(hour, minute)
+                preferences.updateEveningAlarm(current.isEveningEnabled, newTime)
+
+                AlarmScheduler.scheduleEveningAlarm(
+                    getApplication(),
+                    newTime,
+                    current.isEveningEnabled  // это Boolean, все правильно
+                )
+
+                _toastMessage.value = "Вечерний будильник установлен на ${String.format("%02d:%02d", hour, minute)}"
+            } catch (e: Exception) {
+                _toastMessage.value = "Ошибка: ${e.message}"
+                android.util.Log.e("AlarmViewModel", "Failed to update evening time", e)
+            }
         }
     }
 
@@ -9106,22 +9308,43 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
-import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.readium.r2.testapp.R
-import java.io.IOException
 
 class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val CHANNEL_ID = "alarm_channel"
         const val NOTIFICATION_ID = 1002
-        private var mediaPlayer: MediaPlayer? = null
+
+        // mediaPlayer сделан internal, чтобы был доступен из AlarmAlertActivity
+        @JvmStatic
+        var mediaPlayer: MediaPlayer? = null
+            private set
+
+        private var vibrator: Vibrator? = null
+
+        // Публичный метод для остановки звука из AlarmAlertActivity
+        @JvmStatic
+        fun stopAlarmSound() {
+            try {
+                mediaPlayer?.let {
+                    if (it.isPlaying) it.stop()
+                    it.release()
+                }
+                mediaPlayer = null
+
+                vibrator?.cancel()
+                vibrator = null
+                Log.d("AlarmReceiver", "Alarm sound stopped")
+            } catch (e: Exception) {
+                Log.e("AlarmReceiver", "Failed to stop sound", e)
+            }
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -9185,7 +9408,7 @@ class AlarmReceiver : BroadcastReceiver() {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID, notification)
 
-            Log.d("AlarmReceiver", "Notification posted - user must tap to confirm")
+            Log.d("AlarmReceiver", "Notification posted")
 
         } catch (e: Exception) {
             Log.e("AlarmReceiver", "Failed to handle alarm", e)
@@ -9196,7 +9419,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     private fun playAlarmSound(context: Context) {
         try {
-            stopAlarmSound()
+            stopAlarmSound() // Останавливаем предыдущий звук
 
             val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val uri = if (alarmSound != null) alarmSound else RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -9219,30 +9442,20 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun stopAlarmSound() {
-        try {
-            mediaPlayer?.let {
-                if (it.isPlaying) it.stop()
-                it.release()
-            }
-            mediaPlayer = null
-        } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Failed to stop sound", e)
-        }
-    }
-
     private fun vibrateDevice(context: Context) {
         try {
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(
-                    longArrayOf(0, 1000, 500, 1000, 500, 1000),
-                    intArrayOf(0, 255, 0, 255, 0, 255),
-                    0
-                ))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000), 0)
+            vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            vibrator?.let { v ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createWaveform(
+                        longArrayOf(0, 1000, 500, 1000, 500, 1000),
+                        intArrayOf(0, 255, 0, 255, 0, 255),
+                        0
+                    ))
+                } else {
+                    @Suppress("DEPRECATION")
+                    v.vibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000), 0)
+                }
             }
             Log.d("AlarmReceiver", "Vibration started")
         } catch (e: Exception) {
@@ -12609,6 +12822,7 @@ val FontFamily.Companion.LITERATA: FontFamily get() = FontFamily("Literata")
 package org.readium.r2.testapp
 
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.StrictMode
 import androidx.datastore.core.DataStore
@@ -12620,8 +12834,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.BuildConfig.DEBUG
-import org.readium.r2.testapp.alarm.AlarmForegroundService
 import org.readium.r2.testapp.alarm.AlarmScheduler
+import org.readium.r2.testapp.alarm.AlarmSoundService
 import org.readium.r2.testapp.data.AlarmPreferencesDataStore
 import org.readium.r2.testapp.data.BookRepository
 import org.readium.r2.testapp.data.SleepRepository
@@ -12726,16 +12940,29 @@ class Application : android.app.Application() {
 
         historySyncManager = HistorySyncManager(this, this)
 
-        // Восстанавливаем будильники после установки приложения
+        // Запускаем сервис будильника при старте приложения
+        startAlarmServices()
+    }
+
+    private fun startAlarmServices() {
+        try {
+            // Запускаем AlarmSoundService в фоне
+            val intent = Intent(this, AlarmSoundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            Timber.d("AlarmSoundService started")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to start AlarmSoundService")
+        }
+
+        // Восстанавливаем будильники после перезапуска
         coroutineScope.launch(Dispatchers.IO) {
             alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
                 AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
             }
-        }
-
-        // Запускаем Foreground Service для будильника
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            AlarmForegroundService.start(this)
         }
     }
 
@@ -22360,9 +22587,9 @@ dependencies {
 ================================================================================
 СТАТИСТИКА
 ================================================================================
-Всего файлов в проекте: 2837
+Всего файлов в проекте: 2840
 Обработано файлов: 0
 Пропущено файлов: 0
 Всего строк кода: 0
-Дата создания отчета: Fri May  1 03:46:11 PM +05 2026
+Дата создания отчета: Fri May  1 08:07:04 PM +05 2026
 ================================================================================
