@@ -1,7 +1,7 @@
 ================================================================================
 ПОЛНЫЙ ИСХОДНЫЙ КОД ANDROID STUDIO ПРОЕКТА
 ================================================================================
-Дата создания: Tue Apr 28 08:26:04 PM +05 2026
+Дата создания: Fri May  1 03:45:39 PM +05 2026
 Директория проекта: /opt/goinfre/kindlyfr/Projects/pkms/mobile/test-app
 ================================================================================
 
@@ -9,7 +9,7 @@
 ================================================================================
 ФАЙЛ: src/main/AndroidManifest.xml
 ТИП: XML
-РАЗМЕР: 12K
+РАЗМЕР: 16K
 ================================================================================
 
 <?xml version="1.0" encoding="utf-8"?>
@@ -38,6 +38,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
       <!-- Для перезагрузки -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Для Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Для восстановления после перезагрузки -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -268,7 +270,8 @@
             android:launchMode="singleInstance"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
-            android:theme="@style/Theme.AppCompat.Dialog" />
+            android:theme="@style/Theme.AppCompat.Dialog"
+            android:exported="true" />
 
     </application>
 
@@ -482,13 +485,13 @@ class BookshelfAdapter(
                 val progress = (book.pagesRead.toDouble() / book.totalPages) * 100
                 if (progress >= 100) {
                     statusText = "✅ Прочитано"
-                    statusColor = Color.parseColor("#4CAF50") // Зеленый
+                    statusColor = Color.parseColor("#50fa4d") // Зеленый
                 } else if (progress > 0) {
                     statusText = "📖 В процессе (${progress.toInt()}%)"
                     statusColor = Color.parseColor("#FFC107") // Желтый/Оранжевый
                 } else {
-                    statusText = "📚 Не начато"
-                    statusColor = Color.parseColor("#9E9E9E") // Серый
+                    statusText = "📚 В плане"
+                    statusColor = Color.parseColor("#fef2c0") // Серый
                 }
             } else {
                 // Если страниц не указано
@@ -496,8 +499,8 @@ class BookshelfAdapter(
                     statusText = "📖 В процессе"
                     statusColor = Color.parseColor("#FFC107")
                 } else {
-                    statusText = "📚 Не начато"
-                    statusColor = Color.parseColor("#9E9E9E")
+                    statusText = "📚 В плане"
+                    statusColor = Color.parseColor("#fef2c0")
                 }
             }
             binding.bookshelfStatusText.text = statusText
@@ -588,7 +591,7 @@ private class BookListDiff : DiffUtil.ItemCallback<Book>() {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/bookshelf/BookshelfViewModel.kt
 ТИП: KOTLIN
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
 package org.readium.r2.testapp.bookshelf
@@ -603,32 +606,36 @@ import kotlinx.coroutines.launch
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.toUrl
 import org.readium.r2.testapp.data.model.Book
+import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.reader.OpeningError
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.EventChannel
 
 class BookshelfViewModel(application: Application) : AndroidViewModel(application) {
-
     private val app get() = getApplication<org.readium.r2.testapp.Application>()
-
     val channel = EventChannel(Channel<Event>(Channel.BUFFERED), viewModelScope)
     val books = app.bookRepository.books()
 
-    fun updateBookMetadata(bookId: Long, title: String, author: String?) {
+    // Обновленная функция с параметром pagesRead
+    fun updateBookMetadata(bookId: Long, title: String, author: String?, pagesRead: Int) {
         viewModelScope.launch {
             try {
+                // Обновляем название и автора
                 app.bookRepository.updateBookTitleAndAuthor(bookId, title, author)
+                // Обновляем номер страницы
+                app.bookRepository.updateBookPages(bookId, pagesRead)
+
                 app.bookRepository.books().firstOrNull()
-                android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author")
+                android.util.Log.d("BookshelfViewModel", "Book metadata updated: $bookId, title=$title, author=$author, pages=$pagesRead")
             } catch (e: Exception) {
                 android.util.Log.e("BookshelfViewModel", "Failed to update book metadata", e)
             }
         }
     }
 
+    // ... остальной код без изменений
     fun deletePublication(book: Book) = viewModelScope.launch {
         app.bookshelf.deleteBook(book)
-        // После удаления обновляем список
         app.bookRepository.books().firstOrNull()
     }
 
@@ -658,6 +665,46 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    // НОВЫЙ МЕТОД: Обновление метаданных + коррекция статистики
+    fun updateBookMetadata(bookId: Long, title: String, author: String?, newPagesRead: Int, oldPagesRead: Int) {
+        viewModelScope.launch {
+            try {
+                // 1. Обновляем базовые данные и номер страницы
+                app.bookRepository.updateBookTitleAndAuthor(bookId, title, author)
+                app.bookRepository.updateBookPages(bookId, newPagesRead)
+
+                // 2. Рассчитываем разницу (дельта)
+                val delta = newPagesRead - oldPagesRead
+
+                if (delta != 0) {
+                    val today = java.time.LocalDate.now()
+                    // Получаем текущую запись за сегодня
+                    val todayStat = app.bookRepository.getReadingStatsForBook(bookId).firstOrNull()?.find { it.date == today }
+
+                    val currentDailyPages = todayStat?.pagesRead ?: 0
+                    // Корректируем (убеждаемся, что не уходит в минус)
+                    val correctedDailyPages = maxOf(0, currentDailyPages + delta)
+
+                    // Сохраняем скорректированную запись
+                    val updatedStat = ReadingStat(
+                        id = todayStat?.id ?: 0,
+                        bookId = bookId,
+                        date = today,
+                        pagesRead = correctedDailyPages,
+                        hoursRead = todayStat?.hoursRead ?: 0.0
+                    )
+                    app.bookRepository.upsertReadingStat(updatedStat)
+
+                    android.util.Log.d("BookshelfViewModel", "Stats corrected by $delta. New daily total: $correctedDailyPages")
+                }
+
+                app.bookRepository.books().firstOrNull()
+            } catch (e: Exception) {
+                android.util.Log.e("BookshelfViewModel", "Failed to update book metadata", e)
+            }
+        }
+    }
+
     sealed class Event {
         class OpenPublicationError(val error: OpeningError) : Event()
         class LaunchReader(val arguments: ReaderActivityContract.Arguments) : Event()
@@ -667,7 +714,7 @@ class BookshelfViewModel(application: Application) : AndroidViewModel(applicatio
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/bookshelf/EditBookDialogFragment.kt
 ТИП: KOTLIN
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
 package org.readium.r2.testapp.bookshelf
@@ -687,13 +734,13 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Book
 
 class EditBookDialogFragment : DialogFragment() {
-
     private val bookshelfViewModel: BookshelfViewModel by activityViewModels()
-
     private lateinit var book: Book
     private lateinit var titleInput: TextInputEditText
     private lateinit var authorInput: TextInputEditText
     private lateinit var titleLayout: TextInputLayout
+    // Добавляем поле для страниц
+    private lateinit var pagesInput: TextInputEditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -712,9 +759,14 @@ class EditBookDialogFragment : DialogFragment() {
         titleInput = view.findViewById(R.id.edit_title)
         authorInput = view.findViewById(R.id.edit_author)
 
+        // Инициализируем новое поле
+        pagesInput = view.findViewById(R.id.edit_pages_read)
+
         // Заполняем текущими значениями
         titleInput.setText(book.title ?: "")
         authorInput.setText(book.author ?: "")
+        // Устанавливаем текущее значение страниц (если 0, оставляем поле пустым для удобства или ставим 0)
+        pagesInput.setText(if (book.pagesRead > 0) book.pagesRead.toString() else "")
 
         val dialog = MaterialAlertDialogBuilder(requireContext())
             .setTitle("Редактирование книги")
@@ -731,7 +783,6 @@ class EditBookDialogFragment : DialogFragment() {
         dialog.setOnShowListener {
             val positiveButton = (dialog as AlertDialog).getButton(AlertDialog.BUTTON_POSITIVE)
             positiveButton.isEnabled = !titleInput.text.isNullOrBlank()
-
             titleInput.addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -746,7 +797,6 @@ class EditBookDialogFragment : DialogFragment() {
                 }
             })
         }
-
         return dialog
     }
 
@@ -758,14 +808,21 @@ class EditBookDialogFragment : DialogFragment() {
         }
 
         val newAuthor = authorInput.text?.toString()?.trim()
+        val newPagesRead = pagesInput.text?.toString()?.toIntOrNull() ?: 0
 
-        bookshelfViewModel.updateBookMetadata(book.id!!, newTitle, newAuthor)
+        // ПЕРЕДАЁМ ТЕКУЩЕЕ ЗНАЧЕНИЕ (book.pagesRead) ДЛЯ КОРРЕКЦИИ СТАТИСТИКИ
+        bookshelfViewModel.updateBookMetadata(
+            book.id!!,
+            newTitle,
+            newAuthor,
+            newPagesRead,
+            book.pagesRead
+        )
         dismiss()
     }
 
     companion object {
         private const val ARG_BOOK = "book"
-
         fun newInstance(book: Book): EditBookDialogFragment {
             val fragment = EditBookDialogFragment()
             val args = Bundle()
@@ -775,7 +832,6 @@ class EditBookDialogFragment : DialogFragment() {
         }
     }
 }
-
 
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/bookshelf/BookshelfFragment.kt
@@ -5568,6 +5624,7 @@ import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.publication.allAreHtml
 import org.readium.r2.shared.publication.services.isRestricted
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.publication.services.protectionError
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.DebugError
@@ -5674,8 +5731,17 @@ class ReaderRepository(
 
 // 2. Если progression нет, используем pagesRead
         if (initialLocator == null && book.pagesRead > 0) {
-            initialLocator = createLocatorFromPage(book.pagesRead)
-            Timber.d("Created locator from pagesRead: ${book.pagesRead}")
+            try {
+                val positions = publication.positions()
+                if (positions.isNotEmpty()) {
+                    // pagesRead начинается с 1, а список позиций индексируется с 0
+                    val targetIndex = (book.pagesRead - 1).coerceIn(0, positions.size - 1)
+                    initialLocator = positions[targetIndex]
+                    Timber.d("Mapped pagesRead ${book.pagesRead} to position ${targetIndex + 1} / ${positions.size}")
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to map pagesRead to positions")
+            }
         }
 
         if (initialLocator == null) {
@@ -8301,14 +8367,16 @@ class BootReceiver : BroadcastReceiver() {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/alarm/AlarmFragment.kt
 ТИП: KOTLIN
-РАЗМЕР: 8.0K
+РАЗМЕР: 12K
 ================================================================================
 
 package org.readium.r2.testapp.alarm
 
+import android.Manifest
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -8317,6 +8385,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TimePicker
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -8327,14 +8397,27 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentAlarmBinding
 
 class AlarmFragment : Fragment() {
-
     private var _binding: FragmentAlarmBinding? = null
     private val binding get() = _binding!!
-
     private val viewModel: AlarmViewModel by viewModels()
-
     private var isUpdatingMorningFromCode = false
     private var isUpdatingEveningFromCode = false
+
+    // Лаунчер для запроса разрешения на уведомления (Android 13+)
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Snackbar.make(binding.root, "Разрешение на уведомления получено", Snackbar.LENGTH_SHORT).show()
+            checkAlarmPermissions() // Повторная проверка
+        } else {
+            Snackbar.make(
+                binding.root,
+                "Без разрешения на уведомления будильник может не показать окно на заблокированном экране",
+                Snackbar.LENGTH_LONG
+            ).show()
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -8347,7 +8430,6 @@ class AlarmFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         setupTimePickers()
         setupListeners()
         observeViewModel()
@@ -8365,30 +8447,24 @@ class AlarmFragment : Fragment() {
                 viewModel.updateMorningAlarmEnabled(isChecked)
             }
         }
-
         binding.eveningAlarmSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (!isUpdatingEveningFromCode) {
                 viewModel.updateEveningAlarmEnabled(isChecked)
             }
         }
-
         binding.morningTimePicker.setOnTimeChangedListener { _, hour, minute ->
             if (!isUpdatingMorningFromCode) {
                 viewModel.updateMorningTime(hour, minute)
             }
         }
-
         binding.eveningTimePicker.setOnTimeChangedListener { _, hour, minute ->
             if (!isUpdatingEveningFromCode) {
                 viewModel.updateEveningTime(hour, minute)
             }
         }
-
         binding.historyButton.setOnClickListener {
             navigateToHistory()
         }
-
-
         binding.fixPermissionButton.setOnClickListener {
             openAlarmSettings()
         }
@@ -8410,7 +8486,6 @@ class AlarmFragment : Fragment() {
                 isUpdatingEveningFromCode = false
             }
         }
-
         lifecycleScope.launch {
             viewModel.toastMessage.collect { message ->
                 if (message.isNotEmpty()) {
@@ -8422,44 +8497,85 @@ class AlarmFragment : Fragment() {
     }
 
     private fun checkAlarmPermissions() {
-        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!alarmManager.canScheduleExactAlarms()) {
+        // 1. Проверка разрешений на уведомления (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
-                    Для точной работы будильника необходимо разрешение на планирование точных будильников.
-                    Разрешите показ поверх других приложений для работы будильника на заблокированном экране.
+                    Для показа будильника на заблокированном экране необходимо разрешение на уведомления.
+                    Нажмите "Разрешить", чтобы включить уведомления.
                 """.trimIndent()
+                binding.fixPermissionButton.text = "Разрешить"
+                binding.fixPermissionButton.setOnClickListener {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
                 return
             }
         }
 
-        // Проверка разрешения на игнорирование оптимизации батареи
+        // 2. Проверка точных будильников (Android 12+)
+        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!alarmManager.canScheduleExactAlarms()) {
+                binding.permissionWarningCard.visibility = View.VISIBLE
+                binding.permissionWarningText.text = """
+                    Для точной работы будильника необходимо разрешение.
+                    Нажмите "Настроить" и включите "Будильники и напоминания".
+                """.trimIndent()
+                binding.fixPermissionButton.text = "Настроить"
+                binding.fixPermissionButton.setOnClickListener {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    startActivity(intent)
+                }
+                return
+            }
+        }
+
+        // 3. Проверка оптимизации батареи
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = requireContext().getSystemService(Context.POWER_SERVICE) as PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(requireContext().packageName)) {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
-                    Для работы будильника в фоновом режиме необходимо отключить оптимизацию батареи для этого приложения.
+                    Для работы в фоне необходимо отключить оптимизацию батареи.
                     Нажмите "Настроить" и выберите "Не оптимизировать".
                 """.trimIndent()
+                binding.fixPermissionButton.text = "Настроить"
+                binding.fixPermissionButton.setOnClickListener {
+                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    startActivity(intent)
+                }
                 return
             }
         }
 
+        // Если все проверки пройдены
         binding.permissionWarningCard.visibility = View.GONE
     }
 
     private fun openAlarmSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-            startActivity(intent)
+        // Определяем, какие настройки открыть
+        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-            startActivity(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+        } else {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
 
@@ -8468,9 +8584,10 @@ class AlarmFragment : Fragment() {
         navController.navigate(R.id.action_alarm_to_stats)
     }
 
-    private fun showManualEntryDialog() {
-        navigateToHistory()
-        Snackbar.make(binding.root, "Нажмите на кнопку + в статистике", Snackbar.LENGTH_LONG).show()
+    override fun onResume() {
+        super.onResume()
+        // Проверяем разрешения при возврате на фрагмент
+        checkAlarmPermissions()
     }
 
     override fun onDestroyView() {
@@ -8622,6 +8739,7 @@ package org.readium.r2.testapp.alarm
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -8640,7 +8758,6 @@ import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.R
 import java.time.LocalDate
 import java.time.LocalTime
-import kotlinx.coroutines.withContext
 
 class AlarmAlertActivity : Activity() {
 
@@ -8648,24 +8765,38 @@ class AlarmAlertActivity : Activity() {
     private var mediaPlayer: MediaPlayer? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
+    companion object {
+        private var isActive = false
+        private var alarmMediaPlayer: MediaPlayer? = null
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Максимальные флаги для пробуждения экрана
+        if (isActive) {
+            finish()
+            return
+        }
+        isActive = true
+
+        // Показываем поверх блокировки
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
 
-        // Пробуждаем устройство
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "AlarmAlertActivity::wakelock"
         )
-        wakeLock.acquire(10_000)
+        wakeLock.acquire(30_000)
 
         setContentView(R.layout.activity_alarm_alert)
 
@@ -8675,8 +8806,13 @@ class AlarmAlertActivity : Activity() {
         playAlarmSound()
         vibrate()
 
-        // Освобождаем wakelock через 10 секунд
         wakeLock.release()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isActive = false
+        stopAlarmSound()
     }
 
     private fun setupUI() {
@@ -8687,27 +8823,30 @@ class AlarmAlertActivity : Activity() {
 
         if (alarmType == "morning") {
             titleText.text = "🌅 Доброе утро!"
-            messageText.text = "Время просыпаться"
-            primaryButton.text = "Встаю"
-            secondaryButton.text = "Остаюсь лежать"
+            messageText.text = "Отметить подъём?"
+            primaryButton.text = "✅ Встаю"
+            secondaryButton.text = "⏰ Остаюсь лежать"
         } else {
             titleText.text = "🌙 Спокойной ночи!"
-            messageText.text = "Время ложиться спать"
-            primaryButton.text = "Ложусь"
-            secondaryButton.text = "Не ложусь"
+            messageText.text = "Отметить отбой?"
+            primaryButton.text = "✅ Ложусь"
+            secondaryButton.text = "❌ Не ложусь"
         }
 
-        primaryButton.setOnClickListener {
-            onPrimaryAction()
-        }
+        primaryButton.setOnClickListener { onPrimaryAction() }
+        secondaryButton.setOnClickListener { onSecondaryAction() }
+    }
 
-        secondaryButton.setOnClickListener {
-            onSecondaryAction()
-        }
+    private fun cancelNotification() {
+        try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.cancel(AlarmReceiver.NOTIFICATION_ID)
+        } catch (e: Exception) { }
     }
 
     private fun onPrimaryAction() {
-        stopAlarm()
+        stopAlarmSound()
+        cancelNotification()
 
         scope.launch {
             val app = application as Application
@@ -8722,11 +8861,12 @@ class AlarmAlertActivity : Activity() {
             }
         }
 
-        finish()
+        finishAndRemoveTask()
     }
 
     private fun onSecondaryAction() {
-        stopAlarm()
+        stopAlarmSound()
+        cancelNotification()
 
         val snoozeMinutes = if (alarmType == "morning") 5 else 15
 
@@ -8734,13 +8874,10 @@ class AlarmAlertActivity : Activity() {
             val app = application as Application
             val today = LocalDate.now()
 
-            // Для вечернего будильника при выборе "Не ложусь" — помечаем как пропущенный
             if (alarmType == "evening") {
-                // Сохраняем специальное значение, означающее "пропущено"
                 app.sleepRepository.markBedTimeAsMissing(today)
             }
 
-            // Получаем текущий счётчик откладываний
             var snoozeCount = 0
             app.alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
                 snoozeCount = prefs.snoozeCount
@@ -8748,53 +8885,35 @@ class AlarmAlertActivity : Activity() {
             }
 
             if (snoozeCount >= 2) {
-                withContext(Dispatchers.Main) {
-                    showReminderDialog()
+                runOnUiThread {
+                    AlertDialog.Builder(this@AlarmAlertActivity)
+                        .setTitle("Напоминание")
+                        .setMessage(if (alarmType == "morning")
+                            "Вы несколько раз отложили будильник. Укажите фактическое время подъёма в статистике."
+                        else
+                            "Вы несколько раз отложили будильник. Укажите фактическое время отбоя в статистике.")
+                        .setPositiveButton("OK") { _, _ -> finishAndRemoveTask() }
+                        .setCancelable(false)
+                        .show()
                 }
             } else {
-                AlarmScheduler.snoozeAlarm(
-                    this@AlarmAlertActivity,
-                    alarmType,
-                    snoozeMinutes
-                )
+                AlarmScheduler.snoozeAlarm(this@AlarmAlertActivity, alarmType, snoozeMinutes)
                 app.alarmPreferencesDataStore.incrementSnoozeCount()
-                withContext(Dispatchers.Main) {
-                    finish()
-                }
+                finishAndRemoveTask()
             }
         }
 
-        finish()
-    }
-
-    private fun showReminderDialog() {
-        runOnUiThread {
-            val message = if (alarmType == "morning") {
-                "Вы несколько раз отложили будильник. Пожалуйста, укажите фактическое время подъёма."
-            } else {
-                "Вы несколько раз отложили будильник. Пожалуйста, укажите фактическое время отбоя."
-            }
-
-            AlertDialog.Builder(this)
-                .setTitle("Напоминание")
-                .setMessage(message)
-                .setPositiveButton("Указать время") { _, _ ->
-                    finish()
-                }
-                .setNegativeButton("Позже") { _, _ ->
-                    finish()
-                }
-                .setCancelable(false)
-                .show()
-        }
+        finishAndRemoveTask()
     }
 
     private fun playAlarmSound() {
         try {
+            stopAlarmSound()
+
             val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val uri = alarmSound ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
-            mediaPlayer = MediaPlayer().apply {
+            alarmMediaPlayer = MediaPlayer().apply {
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -8811,40 +8930,26 @@ class AlarmAlertActivity : Activity() {
         }
     }
 
+    private fun stopAlarmSound() {
+        try {
+            alarmMediaPlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.release()
+            }
+            alarmMediaPlayer = null
+        } catch (e: Exception) { }
+    }
+
     private fun vibrate() {
         try {
             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(android.os.VibrationEffect.createOneShot(3000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator.vibrate(android.os.VibrationEffect.createOneShot(5000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(3000)
+                vibrator.vibrate(5000)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun stopAlarm() {
-        try {
-            mediaPlayer?.let {
-                if (it.isPlaying) {
-                    it.stop()
-                }
-                it.release()
-            }
-            mediaPlayer = null
-
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            vibrator.cancel()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        stopAlarm()
+        } catch (e: Exception) { }
     }
 }
 
@@ -8987,54 +9092,178 @@ class AlarmViewModel(application: Application) : AndroidViewModel(application) {
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/alarm/AlarmReceiver.kt
 ТИП: KOTLIN
-РАЗМЕР: 4.0K
+РАЗМЕР: 8.0K
 ================================================================================
 
 package org.readium.r2.testapp.alarm
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
-import android.view.WindowManager
-import org.readium.r2.testapp.MainActivity
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.provider.Settings
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import org.readium.r2.testapp.R
+import java.io.IOException
 
 class AlarmReceiver : BroadcastReceiver() {
+    companion object {
+        const val CHANNEL_ID = "alarm_channel"
+        const val NOTIFICATION_ID = 1002
+        private var mediaPlayer: MediaPlayer? = null
+    }
 
     override fun onReceive(context: Context, intent: Intent) {
-        android.util.Log.d("AlarmReceiver", "=== ALARM TRIGGERED ===")
-        android.util.Log.d("AlarmReceiver", "Time: ${System.currentTimeMillis()}")
+        Log.d("AlarmReceiver", "=== ALARM TRIGGERED ===")
 
-        // Получаем Wakelock
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-            "AlarmReceiver::wakelock"
+            "AlarmReceiver::WakeLock"
         )
         wakeLock.acquire(30_000)
 
         try {
             val alarmType = intent.getStringExtra("alarm_type") ?: "morning"
-            android.util.Log.d("AlarmReceiver", "Alarm type: $alarmType")
 
-            // Запускаем Activity с максимальными флагами
-            val alertIntent = Intent(context, AlarmAlertActivity::class.java).apply {
+            // Проигрываем звук будильника
+            playAlarmSound(context)
+
+            // Вибрируем
+            vibrateDevice(context)
+
+            // Создаем канал уведомлений
+            createNotificationChannel(context)
+
+            // Создаем Intent для запуска Activity
+            val activityIntent = Intent(context, AlarmAlertActivity::class.java).apply {
                 putExtra("alarm_type", alarmType)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
-                addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
             }
 
-            context.startActivity(alertIntent)
-            android.util.Log.d("AlarmReceiver", "Activity started")
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
+            val contentPendingIntent = PendingIntent.getActivity(
+                context,
+                alarmType.hashCode(),
+                activityIntent,
+                pendingIntentFlags
+            )
+
+            val title = if (alarmType == "morning") "🌅 Доброе утро!" else "🌙 Спокойной ночи!"
+            val message = if (alarmType == "morning") "Нажмите, чтобы отметить подъём" else "Нажмите, чтобы отметить отбой"
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setAutoCancel(true)
+                .setContentIntent(contentPendingIntent)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setFullScreenIntent(contentPendingIntent, true)
+                .build()
+
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, notification)
+
+            Log.d("AlarmReceiver", "Notification posted - user must tap to confirm")
 
         } catch (e: Exception) {
-            android.util.Log.e("AlarmReceiver", "Failed to start activity", e)
+            Log.e("AlarmReceiver", "Failed to handle alarm", e)
         } finally {
             wakeLock.release()
+        }
+    }
+
+    private fun playAlarmSound(context: Context) {
+        try {
+            stopAlarmSound()
+
+            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val uri = if (alarmSound != null) alarmSound else RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+            mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                )
+                setDataSource(context, uri)
+                isLooping = true
+                prepare()
+                start()
+            }
+            Log.d("AlarmReceiver", "Alarm sound playing")
+        } catch (e: Exception) {
+            Log.e("AlarmReceiver", "Failed to play sound", e)
+        }
+    }
+
+    private fun stopAlarmSound() {
+        try {
+            mediaPlayer?.let {
+                if (it.isPlaying) it.stop()
+                it.release()
+            }
+            mediaPlayer = null
+        } catch (e: Exception) {
+            Log.e("AlarmReceiver", "Failed to stop sound", e)
+        }
+    }
+
+    private fun vibrateDevice(context: Context) {
+        try {
+            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createWaveform(
+                    longArrayOf(0, 1000, 500, 1000, 500, 1000),
+                    intArrayOf(0, 255, 0, 255, 0, 255),
+                    0
+                ))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(longArrayOf(0, 1000, 500, 1000, 500, 1000), 0)
+            }
+            Log.d("AlarmReceiver", "Vibration started")
+        } catch (e: Exception) {
+            Log.e("AlarmReceiver", "Vibration failed", e)
+        }
+    }
+
+    private fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Будильник PKMS",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Будильник с отметкой времени"
+                enableVibration(true)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+                setBypassDnd(true)
+            }
+            val notificationManager = context.getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
         }
     }
 }
@@ -9535,7 +9764,7 @@ class HistoryTableAdapter(
     private fun createDynamicHeaderRow(dates: List<LocalDate>): LinearLayout {
         return LinearLayout(headerDynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(createDynamicCell("Identifier", 150, isHeader = true, gravity = Gravity.CENTER))
+            //addView(createDynamicCell("Identifier", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Автор", 150, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Статус", 100, isHeader = true, gravity = Gravity.CENTER))
             addView(createDynamicCell("Категория", 80, isHeader = true, gravity = Gravity.CENTER))
@@ -9638,7 +9867,7 @@ class HistoryTableAdapter(
     private fun createDynamicRow(book: BookProgress, dates: List<LocalDate>): LinearLayout {
         return LinearLayout(dynamicColumnsLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
+            //addView(createDynamicCell(book.identifier ?: "—", 150, gravity = Gravity.CENTER_VERTICAL or Gravity.START))
             addView(createDynamicCell(book.author, 150, gravity = Gravity.CENTER))
             addView(createDynamicCell(book.status, 100, gravity = Gravity.CENTER))
             addView(createDynamicCell(book.category, 80, gravity = Gravity.CENTER))
@@ -9801,7 +10030,7 @@ class HistoryTableAdapter(
 ================================================================================
 ФАЙЛ: src/main/java/org/readium/r2/testapp/history/HistoryFragment.kt
 ТИП: KOTLIN
-РАЗМЕР: 12K
+РАЗМЕР: 16K
 ================================================================================
 
 package org.readium.r2.testapp.history
@@ -9828,7 +10057,10 @@ import org.readium.r2.testapp.reader.ReaderActivityContract
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import android.app.DatePickerDialog
+import android.content.Context
+import android.graphics.drawable.Drawable
 import android.view.ViewTreeObserver
+import androidx.core.graphics.drawable.DrawableCompat
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -9838,6 +10070,7 @@ class HistoryFragment : Fragment() {
     private val viewModel: HistoryViewModel by viewModels()
     private lateinit var tableAdapter: HistoryTableAdapter
     private var showStats = false
+    private var isSearchVisible = false
 
     // Слушатель для удаления в onDestroyView
     private var scrollChangeListener: ViewTreeObserver.OnScrollChangedListener? = null
@@ -9854,9 +10087,12 @@ class HistoryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setHasOptionsMenu(true)
+
+        binding.searchLayout.visibility = View.GONE
+
         setupPeriodControls()
         setupSearch()
-        setupStatsToggle()
+
         setupFocusHandling()
         setupObservers()
         setupScrollViewSync()
@@ -9876,16 +10112,65 @@ class HistoryFragment : Fragment() {
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_history, menu)
+
+        // Окрашиваем все иконки меню в @color/purple_501
+        val targetColor = ContextCompat.getColor(requireContext(), R.color.white)
+        for (i in 0 until menu.size()) {
+            val item = menu.getItem(i)
+            val originalIcon: Drawable? = item.icon
+            originalIcon?.let { icon ->
+                val wrappedIcon = DrawableCompat.wrap(icon.mutate())
+                DrawableCompat.setTint(wrappedIcon, targetColor)
+                item.icon = wrappedIcon
+            }
+        }
+
         super.onCreateOptionsMenu(menu, inflater)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+
+            R.id.action_select_date -> {
+                showDateRangePicker()
+                true
+            }
+
+            R.id.action_toggle_stats -> {
+                showStats = !showStats
+                updateStatsVisibility()
+                // Опционально: можно менять иконку или показывать подсказку
+                // item.title = if (showStats) "Скрыть статистику" else "Показать статистику"
+                true
+            }
+
+            R.id.action_search -> {
+                toggleSearchVisibility()
+                true
+            }
             R.id.action_sync_history -> {
                 syncWithServer()
                 true
             }
             else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun toggleSearchVisibility() {
+        isSearchVisible = !isSearchVisible
+        binding.searchLayout.visibility = if (isSearchVisible) View.VISIBLE else View.GONE
+
+        if (isSearchVisible) {
+            // Показываем клавиатуру и фокусируемся на поле поиска
+            binding.searchInput.requestFocus()
+            val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(binding.searchInput, InputMethodManager.SHOW_IMPLICIT)
+        } else {
+            // Скрываем клавиатуру и очищаем поиск
+            val imm = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.hideSoftInputFromWindow(binding.searchInput.windowToken, 0)
+            binding.searchInput.text?.clear()
+            viewModel.updateSearchQuery("")
         }
     }
 
@@ -9918,9 +10203,7 @@ class HistoryFragment : Fragment() {
         binding.nextMonthButton.setOnClickListener {
             viewModel.nextMonth()
         }
-        binding.calendarButton.setOnClickListener {
-            showDateRangePicker()
-        }
+
     }
 
     private fun showDateRangePicker() {
@@ -10003,25 +10286,14 @@ class HistoryFragment : Fragment() {
         binding.searchInput.isCursorVisible = false
     }
 
-    private fun setupStatsToggle() {
-        binding.statsToggleButton.setOnClickListener {
-            showStats = !showStats
-            updateStatsVisibility()
-            if (showStats) {
-                binding.statsToggleButton.text = "📊 Статистика"
-                binding.statsToggleButton.icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_baseline_show_chart_24)
-            } else {
-                binding.statsToggleButton.text = "📊 Показать статистику"
-                binding.statsToggleButton.icon = null
-            }
-        }
-    }
 
     private fun updateStatsVisibility() {
         viewModel.filteredTableData.value?.let { data ->
             renderTable(data, showStats)
         }
     }
+
+
 
     private fun setupObservers() {
         lifecycleScope.launch {
@@ -10256,9 +10528,15 @@ class HistoryViewModel(application: Application) : AndroidViewModel(application)
         val bookProgressList = books.mapNotNull { book ->
             val bookId = book.id ?: return@mapNotNull null
 
-            val statusText = when {
-                book.pagesRead > 0 -> "В процессе"
-                else -> "В плане"
+            val statusText = if (book.totalPages > 0) {
+                val progress = (book.pagesRead.toDouble() / book.totalPages) * 100
+                when {
+                    progress >= 100 -> "✅ Прочитано"
+                    progress > 0 -> "📖 В процессе (${progress.toInt()}%)"
+                    else -> "📚 В плане"
+                }
+            } else {
+                if (book.pagesRead > 0) "📖 В процессе" else "📚 В плане"
             }
 
             val bookStats = statsByBook[bookId] ?: emptyList()
@@ -12766,6 +13044,8 @@ interface BooksDao {
     )
     suspend fun saveProgression(locator: String, id: Long)
 
+
+
     // ===== МЕТОДЫ ДЛЯ ЗАКЛАДОК =====
     @Query("SELECT * FROM " + Bookmark.TABLE_NAME + " WHERE " + Bookmark.BOOK_ID + " = :bookId")
     fun getBookmarksForBook(bookId: Long): Flow<List<Bookmark>>
@@ -12817,6 +13097,10 @@ interface BooksDao {
     @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalPagesRead(bookId: Long): Int?
 
+    // НОВЫЙ МЕТОД: Обновляет или создаёт статистику за конкретную дату
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertReadingStat(stat: ReadingStat)
+
     @Query("SELECT SUM(hours_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalHoursRead(bookId: Long): Double?
 
@@ -12826,7 +13110,7 @@ interface BooksDao {
     @Query("UPDATE books SET reading_time = :seconds WHERE id = :bookId")
     suspend fun updateBookReadingTime(bookId: Long, seconds: Long)
 
-    @Query("UPDATE books SET pages_read = :pages WHERE id = :bookId")
+    @Query("UPDATE books SET pages_read = :pages, progression = '{}' WHERE id = :bookId")
     suspend fun updateBookPages(bookId: Long, pages: Int)
 
     @Query("SELECT * FROM reading_stats WHERE book_id = :bookId AND date = :date")
@@ -12908,8 +13192,10 @@ interface BooksDao {
             "media_type = :mediaType, " +
             "has_file = 1, " +
             "is_deleted = 0, " +
-            "last_synced = :lastSynced " +
-            " WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier"
+            "last_synced = :lastSynced, " +
+            "progression = '{}', " +
+            "current_page = 0 " +
+            "WHERE " + Book.SERVER_IDENTIFIER + " = :serverIdentifier"
     )
     suspend fun attachFileToExistingBook(
         serverIdentifier: String,
@@ -12925,8 +13211,10 @@ interface BooksDao {
             "is_deleted = 0, " +
             "href = :href, " +
             "cover = :cover, " +
-            "media_type = :mediaType " +
-            " WHERE " + Book.ID + " = :bookId"
+            "media_type = :mediaType, " +
+            "progression = '{}', " +
+            "current_page = 0 " +
+            "WHERE " + Book.ID + " = :bookId"
     )
     suspend fun attachFileToBookById(
         bookId: Long,
@@ -13214,6 +13502,10 @@ class BookRepository(
 
     fun getReadingStatsForBook(bookId: Long): Flow<List<ReadingStat>> =
         booksDao.getReadingStatsForBook(bookId)
+
+    suspend fun upsertReadingStat(stat: ReadingStat) {
+        booksDao.upsertReadingStat(stat)
+    }
 
     fun getAllReadingStats(): Flow<List<ReadingStat>> = booksDao.getAllReadingStats()
 
@@ -15387,10 +15679,10 @@ class Bookshelf(
             val bookId = existingBook.id
             if (bookId != null) {
                 Timber.d("✅ Found by identifier! ID: $bookId, linking file")
-
-                // Сохраняем обложку в постоянное место
                 val permanentCoverPath = saveCoverPermanently(coverFile, bookId)
 
+                // ✅ ИСПРАВЛЕНИЕ: Сбрасываем локацию и текущую страницу, т.к. они несовместимы с новым файлом.
+                // Статистика чтения (pagesRead, readingTime) сохраняется.
                 bookRepository.updateBook(
                     existingBook.copy(
                         href = url.toString(),
@@ -15398,23 +15690,20 @@ class Bookshelf(
                         hasFile = true,
                         isDeleted = false,
                         lastSynced = System.currentTimeMillis(),
-                        pagesRead = existingBook.pagesRead,
-                        readingTime = existingBook.readingTime,
-                        currentPage = existingBook.currentPage,  // ← Это важно!
-                        totalPages = existingBook.totalPages.takeIf { it > 0 } ?: publication.positions().size,
+                        pagesRead = existingBook.pagesRead,      // Оставляем историю
+                        readingTime = existingBook.readingTime,  // Оставляем историю
+                        currentPage = 0,                         // ⬅️ СБРОС: начинаем с начала
+                        totalPages = publication.positions().size, // ⬅️ БЕРЁМ из нового файла
                         lastReadDate = existingBook.lastReadDate,
-                        progression = existingBook.progression,
-
+                        progression = "{}",                      // ⬅️ СБРОС: убираем невалидный CFI
                     )
                 )
-
                 bookRepository.attachFileToBookById(
                     bookId = bookId,
                     href = url.toString(),
                     cover = permanentCoverPath,
                     mediaType = asset.format.mediaType.toString()
                 )
-
                 coverFile.delete()
                 channel.send(Event.ImportPublicationSuccess)
                 return
@@ -16975,7 +17264,7 @@ class MenuFragment : Fragment() {
             Module(4, "Состояния", R.drawable.ic_module_emotions, isAvailable = false),
             Module(5, "Календарь", R.drawable.ic_module_calendar, isAvailable = false),
             Module(6, "Банк слов", R.drawable.ic_module_vocabulary, isAvailable = false),
-            Module(7, "Заметки", R.drawable.ic_module_notes, isAvailable = false),
+            Module(7, "База знаний", R.drawable.ic_module_notes, isAvailable = false),
             Module(8, "Вокал", R.drawable.ic_module_vocal, isAvailable = false)
         )
         modulesAdapter.submitList(modules)
@@ -17467,10 +17756,27 @@ useExternalFileDir=false
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_select_date"
+        android:title="Выбрать даты"
+        android:icon="@drawable/ic_baseline_calendar_24"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_search"
+        android:title="Поиск"
+        android:icon="@drawable/ic_baseline_search_24"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_toggle_stats"
+        android:title="Статистика"
+        android:icon="@drawable/ic_baseline_show_chart_24"
+        app:showAsAction="always" />
+
     <item
         android:id="@+id/action_sync_history"
         android:title="Синхронизация"
-        android:icon="@drawable/ic_baseline_sync_24"
+        android:icon="@drawable/ic_baseline_file_download_24"
         app:showAsAction="always" />
 </menu>
 
@@ -17974,7 +18280,7 @@ useExternalFileDir=false
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="#000000"
+        android:fillColor="@android:color/white"
         android:pathData="M19,4h-1V2h-2v2H8V2H6v2H5C3.89,4 3.01,4.9 3.01,6L3,20c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2zM19,20H5V10h14v10zM9,14H7v-2h2v2zM13,14h-2v-2h2v2zM17,14h-2v-2h2v2zM9,18H7v-2h2v2zM13,18h-2v-2h2v2zM17,18h-2v-2h2v2z"/>
 </vector>
 
@@ -18108,6 +18414,24 @@ useExternalFileDir=false
       android:pathData="M8,5v14l11,-7z"/>
 </vector>
 
+
+================================================================================
+ФАЙЛ: src/main/res/drawable/ic_baseline_arrow_back_24.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z"/>
+</vector>
 
 ================================================================================
 ФАЙЛ: src/main/res/drawable/selector_purple.xml
@@ -18320,7 +18644,7 @@ useExternalFileDir=false
     android:viewportHeight="24"
     android:tint="?attr/colorControlNormal">
     <path
-        android:fillColor="@android:color/white"
+        android:fillColor="@color/purple_501"
         android:pathData="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.7,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.7,-2.8L5.24,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3z"/>
 </vector>
 
@@ -18337,7 +18661,7 @@ useExternalFileDir=false
     android:viewportHeight="24"
     android:tint="?attr/colorControlNormal">
   <path
-      android:fillColor="@android:color/white"
+      android:fillColor="@color/purple_501"
       android:pathData="M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"/>
 </vector>
 
@@ -18348,14 +18672,23 @@ useExternalFileDir=false
 РАЗМЕР: 4.0K
 ================================================================================
 
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+
+    <!-- Буква A -->
     <path
-        android:fillColor="#000000"
-        android:pathData="M5,3h14c1.1,0 2,0.9 2,2v14c0,1.1 -0.9,2 -2,2H5c-1.1,0 -2,-0.9 -2,-2V5c0,-1.1 0.9,-2 2,-2zM7,7h4v2H7V7zM13,7h4v2h-4V7zM7,11h4v2H7V11zM13,11h4v2h-4V11zM7,15h10v2H7V15z"/>
+        android:fillColor="@android:color/white"
+        android:pathData="M9,4L5,16H7L8,13H12L13,16H15L11,4H9zM9.5,8.5L10.5,11H8.5L9.5,8.5Z" />
+
+    <!-- Буква B -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M16,4H20C21.1,4 22,4.9 22,6C22,6.9 21.4,7.7 20.6,8C21.5,8.3 22,9.1 22,10C22,11.1 21.1,12 20,12H16V4ZM18,6V8H19.5C19.8,8 20,7.8 20,7.5C20,7.2 19.8,7 19.5,7H18ZM18,9.5V10.5H19.5C19.8,10.5 20,10.3 20,10C20,9.7 19.8,9.5 19.5,9.5H18Z" />
 </vector>
 
 ================================================================================
@@ -18459,6 +18792,23 @@ useExternalFileDir=false
 </shape>
 
 ================================================================================
+ФАЙЛ: src/main/res/drawable/baseline_file_download_24.xml
+ТИП: XML
+РАЗМЕР: 4.0K
+================================================================================
+
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_sync_history"
+        android:title="Синхронизация"
+        android:icon="@drawable/ic_baseline_file_download_24"
+        app:showAsAction="always" />
+</menu>
+
+================================================================================
 ФАЙЛ: src/main/res/drawable/ic_baseline_show_chart_24.xml
 ТИП: XML
 РАЗМЕР: 4.0K
@@ -18470,7 +18820,7 @@ useExternalFileDir=false
     android:viewportWidth="24"
     android:viewportHeight="24">
     <path
-        android:fillColor="#ffffff"
+        android:fillColor="@android:color/white"
         android:pathData="M3.5,18.49l6-6.01 4,4L22,6.92l-1.41-1.41-7.09,7.97-4-4L2,16.99z"/>
 </vector>
 
@@ -18570,7 +18920,22 @@ useExternalFileDir=false
     android:viewportHeight="24">
     <path
         android:fillColor="#000000"
-        android:pathData="M18,2H6c-1.1,0-2,0.9-2,2v16c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2zM6,4h5v8l-2.5,-1.5L6,12V4z"/>
+        android:pathData="M12,2L2,7l10,5l10,-5z"/>
+    <path
+        android:fillColor="#000000"
+        android:pathData="M4,9h16v2H4z"/>
+    <path
+        android:fillColor="#000000"
+        android:pathData="M5,11h2v9H5zM9,11h2v9H9zM13,11h2v9h-2zM17,11h2v9h-2z"/>
+    <path
+        android:fillColor="#000000"
+        android:pathData="M3,22h18v2H3z"/>
+    <path
+        android:fillColor="#000000"
+        android:pathData="M10,15h4v2h-4z"/>
+    <path
+        android:fillColor="#000000"
+        android:pathData="M11,17h2v3h-2z"/>
 </vector>
 
 ================================================================================
@@ -18620,7 +18985,10 @@ useExternalFileDir=false
     android:viewportHeight="24">
     <path
         android:fillColor="#000000"
-        android:pathData="M14,2H6c-1.1,0-2,0.9-2,2v16c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V8l-6,-6zM16,18H8v-2h8v2zM16,14H8v-2h8v2zM13,9V3.5L18.5,9H13z"/>
+        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,2.38 1.19,4.47 3,5.74V17c0,0.55 0.45,1 1,1h6c0.55,0 1,-0.45 1,-1v-2.26c1.81,-1.27 3,-3.36 3,-5.74 0,-3.87 -3.13,-7 -7,-7z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M9,13h6M10,10h4"/>
 </vector>
 
 ================================================================================
@@ -18851,7 +19219,7 @@ useExternalFileDir=false
     <fragment
         android:id="@+id/historyFragment"
         android:name="org.readium.r2.testapp.history.HistoryFragment"
-        android:label="История чтения"
+        android:label="История"
         tools:layout="@layout/fragment_history" />
 
     <!-- Будильник - настройки -->
@@ -18939,14 +19307,12 @@ useExternalFileDir=false
         android:layout_height="wrap_content"
         android:hint="Название"
         app:errorEnabled="true">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/edit_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
             android:maxLines="1" />
-
     </com.google.android.material.textfield.TextInputLayout>
 
     <com.google.android.material.textfield.TextInputLayout
@@ -18956,14 +19322,27 @@ useExternalFileDir=false
         android:layout_marginTop="16dp"
         android:hint="Автор"
         app:errorEnabled="true">
-
         <com.google.android.material.textfield.TextInputEditText
             android:id="@+id/edit_author"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
             android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
 
+    <!-- Новое поле для ввода текущей страницы -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/pages_read_text_input_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="Текущая страница">
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/edit_pages_read"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="number"
+            android:maxLines="1" />
     </com.google.android.material.textfield.TextInputLayout>
 
 </LinearLayout>
@@ -21198,6 +21577,15 @@ useExternalFileDir=false
     android:background="?attr/colorPrimary">
 
     <TextView
+        android:id="@+id/alarmHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🔔 Нажмите на уведомление для отметки"
+        android:textSize="12sp"
+        android:textColor="@android:color/white"
+        android:layout_marginTop="16dp" />
+
+    <TextView
         android:id="@+id/alarmTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -21472,7 +21860,7 @@ useExternalFileDir=false
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="#80000000"
-                    android:gravity="center"
+                    android:gravity="top"
                     android:orientation="horizontal"
                     android:visibility="gone">
                     <ImageButton
@@ -21591,13 +21979,23 @@ useExternalFileDir=false
         android:gravity="center_vertical"
         android:padding="12dp"
         android:background="?attr/colorSurface">
-        <Button
+
+        <!-- Кнопка "Предыдущий месяц" -->
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/prevMonthButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:text="◀"
-            android:background="@android:color/transparent"
-            android:textSize="24sp" />
+            android:insetLeft="0dp"
+            android:insetTop="0dp"
+            android:insetRight="0dp"
+            android:insetBottom="0dp"
+            android:backgroundTint="@android:color/transparent"
+            app:icon="@drawable/ic_baseline_arrow_back_24"
+            app:iconTint="@android:color/white"
+            app:iconPadding="0dp"
+            app:cornerRadius="24dp"
+            android:contentDescription="Предыдущий месяц" />
+
         <TextView
             android:id="@+id/periodTitle"
             android:layout_width="0dp"
@@ -21607,20 +22005,22 @@ useExternalFileDir=false
             android:textSize="18sp"
             android:textStyle="bold"
             android:gravity="center" />
-        <Button
+
+        <!-- Кнопка "Следующий месяц" -->
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/nextMonthButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:text="▶"
-            android:background="@android:color/transparent"
-            android:textSize="24sp" />
-        <ImageButton
-            android:id="@+id/calendarButton"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_baseline_calendar_24"
-            android:background="@android:color/transparent"
-            android:contentDescription="Выбрать период" />
+            android:insetLeft="0dp"
+            android:insetTop="0dp"
+            android:insetRight="0dp"
+            android:insetBottom="0dp"
+            android:backgroundTint="@android:color/transparent"
+            app:icon="@drawable/ic_baseline_arrow_forward_24"
+            app:iconTint="@android:color/white"
+            app:iconPadding="0dp"
+            app:cornerRadius="24dp"
+            android:contentDescription="Следующий месяц" />
     </LinearLayout>
 
     <!-- Поле поиска -->
@@ -21647,19 +22047,6 @@ useExternalFileDir=false
             android:cursorVisible="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
-    <!-- Кнопка Статистика -->
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/statsToggleButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp"
-        android:layout_marginBottom="8dp"
-        android:text="📊 Статистика"
-        android:backgroundTint="#00CC00"
-        android:textColor="@android:color/white"
-        app:icon="@drawable/ic_baseline_show_chart_24"
-        app:iconGravity="textStart" />
 
     <!-- ВЕРХНИЙ ЗАГОЛОВОК ТАБЛИЦЫ (Всегда виден) -->
     <LinearLayout
@@ -21973,9 +22360,9 @@ dependencies {
 ================================================================================
 СТАТИСТИКА
 ================================================================================
-Всего файлов в проекте: 2827
+Всего файлов в проекте: 2837
 Обработано файлов: 0
 Пропущено файлов: 0
 Всего строк кода: 0
-Дата создания отчета: Tue Apr 28 08:26:36 PM +05 2026
+Дата создания отчета: Fri May  1 03:46:11 PM +05 2026
 ================================================================================

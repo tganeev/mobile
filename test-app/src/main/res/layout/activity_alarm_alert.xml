@@ -8,6 +8,15 @@
     android:background="?attr/colorPrimary">
 
     <TextView
+        android:id="@+id/alarmHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🔔 Нажмите на уведомление для отметки"
+        android:textSize="12sp"
+        android:textColor="@android:color/white"
+        android:layout_marginTop="16dp" />
+
+    <TextView
         android:id="@+id/alarmTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"

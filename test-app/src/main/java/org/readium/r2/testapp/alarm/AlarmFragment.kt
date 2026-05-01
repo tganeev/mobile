@@ -1,8 +1,10 @@
 package org.readium.r2.testapp.alarm
 
+import android.Manifest
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
@@ -11,6 +13,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TimePicker
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -21,14 +25,27 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentAlarmBinding
 
 class AlarmFragment : Fragment() {
-
     private var _binding: FragmentAlarmBinding? = null
     private val binding get() = _binding!!
-
     private val viewModel: AlarmViewModel by viewModels()
-
     private var isUpdatingMorningFromCode = false
     private var isUpdatingEveningFromCode = false
+
+    // Лаунчер для запроса разрешения на уведомления (Android 13+)
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            Snackbar.make(binding.root, "Разрешение на уведомления получено", Snackbar.LENGTH_SHORT).show()
+            checkAlarmPermissions() // Повторная проверка
+        } else {
+            Snackbar.make(
+                binding.root,
+                "Без разрешения на уведомления будильник может не показать окно на заблокированном экране",
+                Snackbar.LENGTH_LONG
+            ).show()
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -41,7 +58,6 @@ class AlarmFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         setupTimePickers()
         setupListeners()
         observeViewModel()
@@ -59,30 +75,24 @@ class AlarmFragment : Fragment() {
                 viewModel.updateMorningAlarmEnabled(isChecked)
             }
         }
-
         binding.eveningAlarmSwitch.setOnCheckedChangeListener { _, isChecked ->
             if (!isUpdatingEveningFromCode) {
                 viewModel.updateEveningAlarmEnabled(isChecked)
             }
         }
-
         binding.morningTimePicker.setOnTimeChangedListener { _, hour, minute ->
             if (!isUpdatingMorningFromCode) {
                 viewModel.updateMorningTime(hour, minute)
             }
         }
-
         binding.eveningTimePicker.setOnTimeChangedListener { _, hour, minute ->
             if (!isUpdatingEveningFromCode) {
                 viewModel.updateEveningTime(hour, minute)
             }
         }
-
         binding.historyButton.setOnClickListener {
             navigateToHistory()
         }
-
-
         binding.fixPermissionButton.setOnClickListener {
             openAlarmSettings()
         }
@@ -104,7 +114,6 @@ class AlarmFragment : Fragment() {
                 isUpdatingEveningFromCode = false
             }
         }
-
         lifecycleScope.launch {
             viewModel.toastMessage.collect { message ->
                 if (message.isNotEmpty()) {
@@ -116,44 +125,85 @@ class AlarmFragment : Fragment() {
     }
 
     private fun checkAlarmPermissions() {
-        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!alarmManager.canScheduleExactAlarms()) {
+        // 1. Проверка разрешений на уведомления (Android 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
-                    Для точной работы будильника необходимо разрешение на планирование точных будильников.
-                    Разрешите показ поверх других приложений для работы будильника на заблокированном экране.
+                    Для показа будильника на заблокированном экране необходимо разрешение на уведомления.
+                    Нажмите "Разрешить", чтобы включить уведомления.
                 """.trimIndent()
+                binding.fixPermissionButton.text = "Разрешить"
+                binding.fixPermissionButton.setOnClickListener {
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
                 return
             }
         }
 
-        // Проверка разрешения на игнорирование оптимизации батареи
+        // 2. Проверка точных будильников (Android 12+)
+        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!alarmManager.canScheduleExactAlarms()) {
+                binding.permissionWarningCard.visibility = View.VISIBLE
+                binding.permissionWarningText.text = """
+                    Для точной работы будильника необходимо разрешение.
+                    Нажмите "Настроить" и включите "Будильники и напоминания".
+                """.trimIndent()
+                binding.fixPermissionButton.text = "Настроить"
+                binding.fixPermissionButton.setOnClickListener {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    startActivity(intent)
+                }
+                return
+            }
+        }
+
+        // 3. Проверка оптимизации батареи
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = requireContext().getSystemService(Context.POWER_SERVICE) as PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(requireContext().packageName)) {
                 binding.permissionWarningCard.visibility = View.VISIBLE
                 binding.permissionWarningText.text = """
-                    Для работы будильника в фоновом режиме необходимо отключить оптимизацию батареи для этого приложения.
+                    Для работы в фоне необходимо отключить оптимизацию батареи.
                     Нажмите "Настроить" и выберите "Не оптимизировать".
                 """.trimIndent()
+                binding.fixPermissionButton.text = "Настроить"
+                binding.fixPermissionButton.setOnClickListener {
+                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    startActivity(intent)
+                }
                 return
             }
         }
 
+        // Если все проверки пройдены
         binding.permissionWarningCard.visibility = View.GONE
     }
 
     private fun openAlarmSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-            startActivity(intent)
+        // Определяем, какие настройки открыть
+        val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-            startActivity(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+        } else {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
 
@@ -162,9 +212,10 @@ class AlarmFragment : Fragment() {
         navController.navigate(R.id.action_alarm_to_stats)
     }
 
-    private fun showManualEntryDialog() {
-        navigateToHistory()
-        Snackbar.make(binding.root, "Нажмите на кнопку + в статистике", Snackbar.LENGTH_LONG).show()
+    override fun onResume() {
+        super.onResume()
+        // Проверяем разрешения при возврате на фрагмент
+        checkAlarmPermissions()
     }
 
     override fun onDestroyView() {
