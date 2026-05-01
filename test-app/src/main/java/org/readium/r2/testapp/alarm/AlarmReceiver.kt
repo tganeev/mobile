@@ -6,179 +6,101 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.os.Build
 import android.os.PowerManager
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import org.readium.r2.testapp.R
 
 class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val CHANNEL_ID = "alarm_channel_important"
         const val NOTIFICATION_ID = 1002
-        private var mediaPlayer: MediaPlayer? = null
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         Log.d("AlarmReceiver", "=== ALARM TRIGGERED ===")
 
+        // 1. Создаем/обновляем канал уведомлений с MAX приоритетом
+        createNotificationChannel(context)
+
+        // 2. Удерживаем CPU активным, пока обрабатываем будильник
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
             "AlarmReceiver::WakeLock"
         )
-        wakeLock.acquire(30_000)
+        wakeLock.acquire(30_000) // 30 секунд
 
         try {
             val alarmType = intent.getStringExtra("alarm_type") ?: "morning"
 
-            // Проигрываем звук
-            playAlarmSound(context)
-
-            // Вибрация
-            vibrateDevice(context)
-
-            // Создаем Intent для Activity
-            val activityIntent = Intent(context, AlarmAlertActivity::class.java).apply {
+            // 3. Интент для полноэкранной активности
+            val fullScreenIntent = Intent(context, AlarmAlertActivity::class.java).apply {
                 putExtra("alarm_type", alarmType)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+                addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
             }
 
-            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
+            // PendingIntent должен быть IMMUTABLE для безопасности
+            val pendingIntentFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
-            val activityPendingIntent = PendingIntent.getActivity(
+            val fullScreenPendingIntent = PendingIntent.getActivity(
                 context,
-                System.currentTimeMillis().toInt(),
-                activityIntent,
+                0,
+                fullScreenIntent,
                 pendingIntentFlags
             )
 
-            // Создаем канал уведомлений с ВЫСОКИМ приоритетом
-            createNotificationChannel(context)
-
             val title = if (alarmType == "morning") "🌅 Доброе утро!" else "🌙 Спокойной ночи!"
-            val message = if (alarmType == "morning") "Нажмите, чтобы отметить подъём" else "Нажмите, чтобы отметить отбой"
+            val message = if (alarmType == "morning") "Время просыпаться" else "Время ложиться спать"
 
-            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-
+            // 4. Создаем уведомление
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                 .setContentTitle(title)
                 .setContentText(message)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setAutoCancel(true)
-                .setContentIntent(activityPendingIntent)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setFullScreenIntent(activityPendingIntent, true)
-                .setSound(alarmSound)  // ← Добавить звук в уведомление
-                .setVibrate(longArrayOf(0, 500, 500, 500))
+                .setAutoCancel(false) // Запрещаем свайп, пока пользователь не нажмет кнопку
+                .setOngoing(true)
+                // 🔑 Ключевой параметр: система сама запустит активность поверх блокировки
+                .setFullScreenIntent(fullScreenPendingIntent, true)
                 .build()
 
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            // 5. Публикуем уведомление
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
 
-            Log.d("AlarmReceiver", "Notification posted. Channel: $CHANNEL_ID")
+            Log.d("AlarmReceiver", "Full-screen notification posted")
 
         } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Failed: ${e.message}", e)
+            Log.e("AlarmReceiver", "Failed to handle alarm", e)
         } finally {
             wakeLock.release()
         }
     }
 
-    private fun playAlarmSound(context: Context) {
-        try {
-            stopAlarmSound()
-
-            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            val uri = if (alarmSound != null) alarmSound else RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .build()
-                )
-                setDataSource(context, uri)
-                isLooping = true
-                prepare()
-                start()
-            }
-            Log.d("AlarmReceiver", "Sound playing")
-        } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Sound failed: ${e.message}", e)
-        }
-    }
-
-    private fun stopAlarmSound() {
-        try {
-            mediaPlayer?.let {
-                if (it.isPlaying) it.stop()
-                it.release()
-            }
-            mediaPlayer = null
-        } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Stop sound failed", e)
-        }
-    }
-
-    private fun vibrateDevice(context: Context) {
-        try {
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createWaveform(
-                    longArrayOf(0, 500, 500, 500, 500, 500, 500, 500),
-                    intArrayOf(0, 255, 0, 255, 0, 255, 0, 255),
-                    0
-                ))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(longArrayOf(0, 500, 500, 500, 500, 500), 0)
-            }
-            Log.d("AlarmReceiver", "Vibration started")
-        } catch (e: Exception) {
-            Log.e("AlarmReceiver", "Vibration failed", e)
-        }
-    }
-
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Удаляем старый канал, если есть
-            val notificationManager = context.getSystemService(NotificationManager::class.java)
-            try {
-                notificationManager.deleteNotificationChannel("alarm_channel")
-            } catch (e: Exception) { }
-
-            // Создаем новый канал с максимальным приоритетом
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Будильник PKMS",
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_HIGH // 🔥 Высокая важность обязательна
             ).apply {
-                description = "Будильник с отметкой времени"
+                description = "Уведомления будильника с полноэкранным запуском"
+                setShowBadge(true)
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 500, 500)
+                enableLights(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+                lightColor = android.graphics.Color.RED
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
-                setBypassDnd(true)  // Обход режима "Не беспокоить"
-                setSound(null, null)  // Звук уже через MediaPlayer
+                setBypassDnd(true) // Обход режима "Не беспокоить"
             }
+            val notificationManager = context.getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
-            Log.d("AlarmReceiver", "Notification channel created: $CHANNEL_ID")
         }
     }
 }
