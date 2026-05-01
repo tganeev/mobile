@@ -22,8 +22,11 @@ class AlarmReceiver : BroadcastReceiver() {
         const val CHANNEL_ID = "alarm_channel"
         const val NOTIFICATION_ID = 1002
 
-        // Делаем mediaPlayer внутренним, но доступным через метод
-        private var mediaPlayer: MediaPlayer? = null
+        // mediaPlayer сделан internal, чтобы был доступен из AlarmAlertActivity
+        @JvmStatic
+        var mediaPlayer: MediaPlayer? = null
+            private set
+
         private var vibrator: Vibrator? = null
 
         // Публичный метод для остановки звука из AlarmAlertActivity
@@ -38,16 +41,10 @@ class AlarmReceiver : BroadcastReceiver() {
 
                 vibrator?.cancel()
                 vibrator = null
-                Log.d("AlarmReceiver", "Alarm sound stopped via static method")
+                Log.d("AlarmReceiver", "Alarm sound stopped")
             } catch (e: Exception) {
                 Log.e("AlarmReceiver", "Failed to stop sound", e)
             }
-        }
-
-        // Проверка, играет ли звук
-        @JvmStatic
-        fun isAlarmPlaying(): Boolean {
-            return mediaPlayer?.isPlaying == true
         }
     }
 

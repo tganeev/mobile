@@ -2,14 +2,9 @@ package org.readium.r2.testapp.alarm
 
 import android.app.Activity
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
-import android.os.Vibrator
-import android.util.Log
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
@@ -26,7 +21,6 @@ class AlarmAlertActivity : Activity() {
 
     private lateinit var alarmType: String
     private val scope = CoroutineScope(Dispatchers.IO)
-    private var localMediaPlayer: MediaPlayer? = null
 
     companion object {
         private var isActive = false
@@ -66,20 +60,12 @@ class AlarmAlertActivity : Activity() {
 
         setupUI()
 
-        // Проверяем, играет ли звук через AlarmReceiver, если нет - запускаем локально
-        if (!AlarmReceiver.isAlarmPlaying()) {
-            playLocalAlarmSound()
-        }
-
-        vibrateLocal()
-
         wakeLock.release()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         isActive = false
-        stopAllSounds()
     }
 
     private fun setupUI() {
@@ -100,8 +86,48 @@ class AlarmAlertActivity : Activity() {
             secondaryButton.text = "❌ Не ложусь"
         }
 
-        primaryButton.setOnClickListener { onPrimaryAction() }
-        secondaryButton.setOnClickListener { onSecondaryAction() }
+        primaryButton.setOnClickListener {
+            onPrimaryAction()
+            closeActivity()
+        }
+        secondaryButton.setOnClickListener {
+            onSecondaryAction()
+            closeActivity()
+        }
+    }
+
+    private fun closeActivity() {
+        // Метод для корректного закрытия Activity
+        runOnUiThread {
+            try {
+                // Убираем флаги перед закрытием
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    setShowWhenLocked(false)
+                    setTurnScreenOn(false)
+                }
+                window.clearFlags(
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                )
+
+                // Закрываем Activity разными способами для надежности
+                finish()
+                finishAndRemoveTask()
+
+                // Для Android 5.0+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    finishAfterTransition()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                try {
+                    finish()
+                } catch (ex: Exception) {
+                    ex.printStackTrace()
+                }
+            }
+        }
     }
 
     private fun cancelNotification() {
@@ -111,15 +137,9 @@ class AlarmAlertActivity : Activity() {
         } catch (e: Exception) { }
     }
 
-    private fun stopAllSounds() {
-        // Останавливаем звук через статический метод AlarmReceiver
-        AlarmReceiver.stopAlarmSound()
-        // Останавливаем локальный MediaPlayer
-        stopLocalAlarmSound()
-    }
-
     private fun onPrimaryAction() {
-        stopAllSounds()
+        // Останавливаем звук через AlarmReceiver
+        AlarmReceiver.stopAlarmSound()
         cancelNotification()
 
         scope.launch {
@@ -134,13 +154,11 @@ class AlarmAlertActivity : Activity() {
                 app.sleepRepository.saveBedTime(today, now, isManual = false)
             }
         }
-
-        finishAndRemoveTask()
     }
 
     private fun onSecondaryAction() {
-        // Останавливаем звук и вибрацию (КЛЮЧЕВОЙ МОМЕНТ!)
-        stopAllSounds()
+        // Останавливаем звук через AlarmReceiver
+        AlarmReceiver.stopAlarmSound()
         cancelNotification()
 
         val snoozeMinutes = if (alarmType == "morning") 5 else 15
@@ -167,60 +185,14 @@ class AlarmAlertActivity : Activity() {
                             "Вы несколько раз отложили будильник. Укажите фактическое время подъёма в статистике."
                         else
                             "Вы несколько раз отложили будильник. Укажите фактическое время отбоя в статистике.")
-                        .setPositiveButton("OK") { _, _ -> finishAndRemoveTask() }
+                        .setPositiveButton("OK") { _, _ -> }
                         .setCancelable(false)
                         .show()
                 }
             } else {
                 AlarmScheduler.snoozeAlarm(this@AlarmAlertActivity, alarmType, snoozeMinutes)
                 app.alarmPreferencesDataStore.incrementSnoozeCount()
-                finishAndRemoveTask()
             }
         }
-    }
-
-    private fun playLocalAlarmSound() {
-        try {
-            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            val uri = alarmSound ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-
-            localMediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .build()
-                )
-                setDataSource(this@AlarmAlertActivity, uri)
-                isLooping = true
-                prepare()
-                start()
-            }
-            Log.d("AlarmAlertActivity", "Local alarm sound playing")
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun stopLocalAlarmSound() {
-        try {
-            localMediaPlayer?.let {
-                if (it.isPlaying) it.stop()
-                it.release()
-            }
-            localMediaPlayer = null
-        } catch (e: Exception) { }
-    }
-
-    private fun vibrateLocal() {
-        try {
-            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(android.os.VibrationEffect.createOneShot(5000, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator.vibrate(5000)
-            }
-        } catch (e: Exception) { }
     }
 }
