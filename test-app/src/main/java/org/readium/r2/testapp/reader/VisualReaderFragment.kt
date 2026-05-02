@@ -11,6 +11,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.RectF
 import android.os.Bundle
+import android.util.Log
 import android.view.ActionMode
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -27,6 +28,7 @@ import android.widget.LinearLayout
 import android.widget.ListPopupWindow
 import android.widget.PopupWindow
 import android.widget.TextView
+import android.widget.Toast
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -71,8 +73,10 @@ import org.readium.r2.navigator.util.DirectionalNavigationAdapter
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.Language
+import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.Note
 import org.readium.r2.testapp.databinding.FragmentReaderBinding
 import org.readium.r2.testapp.reader.tts.TtsControls
 import org.readium.r2.testapp.reader.tts.TtsPreferencesBottomSheetDialogFragment
@@ -86,6 +90,9 @@ import org.readium.r2.testapp.utils.padSystemUi
 import org.readium.r2.testapp.utils.showSystemUi
 import org.readium.r2.testapp.utils.toggleSystemUi
 import org.readium.r2.testapp.utils.viewLifecycle
+import timber.log.Timber
+
+
 
 /*
  * Base reader fragment class
@@ -249,14 +256,10 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                     .filterNotNull()
                     .onEach { locator ->
                         model.saveProgression(locator)
-
-                        // Обновляем отображение текущей страницы
                         val currentPage = model.calculateCurrentPage(locator)
                         val totalPages = model.totalPositions
-
                         currentPageNumber = currentPage
                         totalPagesNumber = totalPages
-
                         updatePageIndicator(currentPage, totalPages)
                     }
                     .launchIn(this)
@@ -436,9 +439,10 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
         override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
             mode.menuInflater.inflate(R.menu.menu_action_mode, menu)
             if (navigator is DecorableNavigator) {
-                menu.findItem(R.id.highlight).isVisible = true
-                menu.findItem(R.id.underline).isVisible = true
-                menu.findItem(R.id.note).isVisible = true
+                menu.findItem(R.id.highlight).isVisible = false
+                menu.findItem(R.id.underline).isVisible = false
+                menu.findItem(R.id.note).isVisible = false
+                menu.findItem(R.id.send_to_notes).isVisible = true
             }
             return true
         }
@@ -448,13 +452,46 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                 R.id.highlight -> showHighlightPopupWithStyle(Highlight.Style.HIGHLIGHT)
                 R.id.underline -> showHighlightPopupWithStyle(Highlight.Style.UNDERLINE)
                 R.id.note -> showAnnotationPopup()
+                R.id.send_to_notes -> showSendToNotesDialog()
                 else -> return false
             }
-
             mode.finish()
             return true
         }
     }
+
+    private fun showSendToNotesDialog() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val navigator = navigator as? SelectableNavigator ?: return@launch
+            val selection = navigator.currentSelection() ?: return@launch
+            val selectedText = selection.locator.text?.highlight ?: ""
+
+            val dialogView = layoutInflater.inflate(R.layout.dialog_send_to_notes, null)
+            val noteInput = dialogView.findViewById<EditText>(R.id.note_content)
+            val selectedTextPreview = dialogView.findViewById<TextView>(R.id.selected_text_preview)
+
+            selectedTextPreview.text = if (selectedText.isNotEmpty()) {
+                "\"${selectedText.take(100)}${if (selectedText.length > 100) "..." else ""}\""
+            } else {
+                "(нет выделенного текста)"
+            }
+
+            AlertDialog.Builder(requireContext())
+                .setTitle("Добавить заметку")
+                .setView(dialogView)
+                .setPositiveButton("Сохранить") { _, _ ->
+                    val noteText = noteInput.text.toString().trim()
+
+                    // ВСЕГДА сохраняем заметку, даже если комментарий пустой
+                    // Если комментарий пустой, используем выделенный текст как содержание
+                    saveNoteToDatabase(selection.locator, selectedText, noteText)
+                    Toast.makeText(requireContext(), "Заметка сохранена", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        }
+    }
+
 
     private fun showHighlightPopupWithStyle(style: Highlight.Style) {
         viewLifecycleOwner.lifecycleScope.launch {
@@ -462,6 +499,47 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
             // popup.
             (navigator as? SelectableNavigator)?.currentSelection()?.rect?.let { selectionRect ->
                 showHighlightPopup(selectionRect, style)
+            }
+        }
+    }
+
+    private fun saveNoteToDatabase(locator: Locator, selectedText: String, noteText: String) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                // Получаем книгу из репозитория
+                val book = (requireContext().applicationContext as Application).bookRepository.get(model.readerInitData.bookId)
+
+                // Определяем содержание заметки:
+                // 1. Если пользователь ввел текст - используем его
+                // 2. Если нет, но есть выделенный текст - используем выделенный текст
+                // 3. Если ничего нет - не сохраняем
+                val content = when {
+                    noteText.isNotEmpty() -> noteText
+                    selectedText.isNotEmpty() -> selectedText
+                    else -> {
+                        Toast.makeText(requireContext(), "Нет текста для сохранения", Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
+                }
+
+                // Комментарий - только если пользователь ввел что-то ОТЛИЧНОЕ от выделенного текста
+                val myComment = if (noteText.isNotEmpty() && noteText != selectedText) noteText else null
+
+                val note = Note(
+                    content = content,
+                    myComment = myComment,
+                    bookTitle = book?.title ?: "Неизвестная книга",
+                    bookAuthor = book?.author,
+                    category = "Общее",
+                    creationDate = System.currentTimeMillis()
+                )
+
+                (requireContext().applicationContext as Application).bookRepository.insertNote(note)
+
+                Timber.d("Note saved: content=$content, myComment=$myComment")
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to save note")
+                Toast.makeText(requireContext(), "Ошибка сохранения заметки: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

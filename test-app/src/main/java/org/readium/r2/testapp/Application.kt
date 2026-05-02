@@ -80,8 +80,16 @@ class Application : android.app.Application() {
 
         val database = AppDatabase.getDatabase(this)
 
+        bookRepository = BookRepository(
+            database.booksDao(),
+            database.notesDao()
+        )
+
+
         // Инициализация bookRepository ПЕРВОЙ, так как она нужна другим компонентам
-        bookRepository = BookRepository(database.booksDao())
+        bookRepository = BookRepository(database.booksDao(), database.notesDao())
+
+
 
         // Затем инициализация остальных репозиториев
         sleepRepository = SleepRepository(database.sleepDao())
@@ -113,6 +121,8 @@ class Application : android.app.Application() {
             bookRepository,
             navigatorPreferences
         )
+
+
 
         // Инициализация SyncManager ПОСЛЕ bookRepository
         syncManager = SyncManager(this, bookRepository)

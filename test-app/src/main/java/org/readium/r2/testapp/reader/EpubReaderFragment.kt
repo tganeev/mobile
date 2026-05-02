@@ -159,6 +159,7 @@ class EpubReaderFragment : VisualReaderFragment() {
         (model.settings as UserPreferencesViewModel<EpubSettings, EpubPreferences>)
             .bind(navigator, viewLifecycleOwner)
 
+
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 // Display page number labels if the book contains a `page-list` navigation document.

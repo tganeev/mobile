@@ -77,7 +77,6 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_sync -> {
-                // Находим BookshelfFragment и вызываем синхронизацию
                 val bookshelfFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment)
                     ?.childFragmentManager?.fragments?.firstOrNull { it is BookshelfFragment }
                 (bookshelfFragment as? BookshelfFragment)?.performSync()
@@ -87,8 +86,16 @@ class MainActivity : AppCompatActivity() {
                 navigateToHistory()
                 true
             }
+            R.id.action_notes -> {  // ДОБАВИТЬ
+                navigateToNotes()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun navigateToNotes() {  // ДОБАВИТЬ
+        navController.navigate(R.id.action_bookshelf_to_notes)
     }
 
     private fun navigateToHistory() {

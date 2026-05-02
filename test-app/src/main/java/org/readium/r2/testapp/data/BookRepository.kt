@@ -13,15 +13,18 @@ import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.testapp.data.db.BooksDao
+import org.readium.r2.testapp.data.db.NotesDao
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.data.model.Bookmark
 import org.readium.r2.testapp.data.model.Highlight
+import org.readium.r2.testapp.data.model.Note
 import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.utils.extensions.readium.authorName
 import timber.log.Timber
 
 class BookRepository(
     private val booksDao: BooksDao,
+    private val notesDao: NotesDao,
 ) {
     // ===== ОСНОВНЫЕ МЕТОДЫ =====
 
@@ -87,7 +90,7 @@ class BookRepository(
             readingTime = 0,
             pagesRead = 0,
             currentPage = 0,
-            totalPages = totalPages,  // ← Убедитесь, что эта строка есть
+            totalPages = totalPages,
             lastReadDate = null,
             serverIdentifier = publication.metadata.identifier
         )
@@ -233,7 +236,20 @@ class BookRepository(
 
     suspend fun deleteHighlight(id: Long) = booksDao.deleteHighlight(id)
 
-    // ===== НОВЫЕ МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
+    // ===== МЕТОДЫ ДЛЯ ЗАМЕТОК (NOTES) =====
+
+    suspend fun insertNote(note: Note): Long = notesDao.insertNote(note)
+
+    suspend fun updateNote(note: Note) = notesDao.updateNote(note)
+
+    suspend fun deleteNote(noteId: Long) = notesDao.deleteNote(noteId)
+
+    fun getAllNotes(): Flow<List<Note>> = notesDao.getAllNotes()
+
+    fun searchNotes(query: String): Flow<List<Note>> = notesDao.searchNotes(query)
+
+
+    // ===== МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
 
     suspend fun findBookByServerIdentifier(serverIdentifier: String): Book? =
         booksDao.findBookByServerIdentifier(serverIdentifier)
@@ -243,6 +259,8 @@ class BookRepository(
 
     suspend fun findBooksByTitle(title: String): List<Book> =
         booksDao.findBooksByTitle(title)
+
+    suspend fun deleteAllNotes() = notesDao.deleteAllNotes()
 
     suspend fun getBookByIdentifier(identifier: String): Book? =
         booksDao.getBookByIdentifier(identifier)

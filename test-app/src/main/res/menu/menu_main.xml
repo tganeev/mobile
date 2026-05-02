@@ -7,12 +7,19 @@
         android:title="Синхронизация"
         android:icon="@drawable/ic_baseline_sync_24"
         app:showAsAction="always" />
+    <item
+        android:id="@+id/action_notes"
+        android:title="Заметки"
+        android:icon="@drawable/ic_baseline_note_24"
+        app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/action_history"
         android:title="История"
         android:icon="@drawable/ic_outline_menu_24"
         app:showAsAction="ifRoom" />
+
+
 
 
 

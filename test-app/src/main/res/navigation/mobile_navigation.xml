@@ -19,12 +19,25 @@
         android:label="Библиотека"
         tools:layout="@layout/fragment_bookshelf" />
 
+
     <!-- История чтения -->
     <fragment
         android:id="@+id/historyFragment"
         android:name="org.readium.r2.testapp.history.HistoryFragment"
         android:label="История"
         tools:layout="@layout/fragment_history" />
+
+    <!-- Добавьте после historyFragment или в нужное место -->
+    <fragment
+        android:id="@+id/notesFragment"
+        android:name="org.readium.r2.testapp.notes.NotesFragment"
+        android:label="Заметки"
+        tools:layout="@layout/fragment_notes" />
+
+    <!-- Добавьте action для перехода, если нужно -->
+    <action
+        android:id="@+id/action_bookshelf_to_notes"
+        app:destination="@id/notesFragment" />
 
     <!-- Будильник - настройки -->
     <fragment
