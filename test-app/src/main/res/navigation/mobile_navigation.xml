@@ -9,7 +9,7 @@
     <fragment
         android:id="@+id/menu_fragment"
         android:name="org.readium.r2.testapp.ui.menu.MenuFragment"
-        android:label="PKMS"
+        android:label="Главная"
         tools:layout="@layout/fragment_menu" />
 
     <!-- Библиотека (ранее Читалка) -->
