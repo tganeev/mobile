@@ -5,8 +5,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.findNavController
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Module
 import org.readium.r2.testapp.databinding.FragmentMenuBinding
@@ -17,6 +20,7 @@ class MenuFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var modulesAdapter: ModulesAdapter
+    private val libraryViewModel: LibraryStatsViewModel by viewModels()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -32,6 +36,7 @@ class MenuFragment : Fragment() {
 
         setupModulesGrid()
         loadModules()
+        observeLibraryStats()
     }
 
     private fun setupModulesGrid() {
@@ -43,7 +48,7 @@ class MenuFragment : Fragment() {
 
     private fun loadModules() {
         val modules = listOf(
-            Module(1, "Библиотека", R.drawable.ic_module_reader, isAvailable = true),
+            Module(1, "Библиотека", R.drawable.ic_module_reader, isAvailable = true),  // <-- маленькая карточка в сетке
             Module(2, "Математика", R.drawable.ic_module_math, isAvailable = false),
             Module(3, "Будильник", R.drawable.ic_module_alarm, isAvailable = true),
             Module(4, "Состояния", R.drawable.ic_module_emotions, isAvailable = false),
@@ -53,6 +58,14 @@ class MenuFragment : Fragment() {
             Module(8, "Вокал", R.drawable.ic_module_vocal, isAvailable = false)
         )
         modulesAdapter.submitList(modules)
+    }
+
+    private fun observeLibraryStats() {
+        lifecycleScope.launch {
+            libraryViewModel.stats.collect { stats ->
+                modulesAdapter.libraryStats = stats
+            }
+        }
     }
 
     private fun handleModuleClick(module: Module) {
