@@ -59,14 +59,7 @@
             android:orientation="vertical"
             android:paddingHorizontal="16dp">
 
-            <!-- Заголовок "Другие" -->
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Другие"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="12dp" />
+
 
             <!-- Сетка модулей (включая маленькую карточку Библиотека) -->
             <androidx.recyclerview.widget.RecyclerView

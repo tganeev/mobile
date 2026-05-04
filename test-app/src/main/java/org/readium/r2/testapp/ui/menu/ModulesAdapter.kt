@@ -48,25 +48,42 @@ class ModulesAdapter(
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(module: Module, libraryStats: LibraryStats) {
-            binding.moduleIcon.setImageResource(module.iconRes)
-            binding.moduleTitle.text = module.title
+            if (module.id == 1 && module.isAvailable) {
+                binding.libraryContent.visibility = android.view.View.VISIBLE
+                binding.regularContent.visibility = android.view.View.GONE
 
-            // Для библиотеки показываем метрики и скрываем статус
-            if (module.id == 1) {
-                binding.statsContainer.visibility = android.view.View.VISIBLE
-                binding.moduleStatus.visibility = android.view.View.GONE
+                binding.libraryContent.layoutParams.height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
 
-                binding.statsPages.text = libraryStats.totalPagesRead.toString()
-                binding.statsMinutes.text = libraryStats.totalMinutesRead.toString()
+                binding.moduleIcon.setImageResource(module.iconRes)
+                binding.moduleTitle.text = module.title
+
+                // Устанавливаем дату
+                val calendar = java.util.Calendar.getInstance()
+                val monthNames = arrayOf("Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек")
+                val month = monthNames[calendar.get(java.util.Calendar.MONTH)]
+                val day = calendar.get(java.util.Calendar.DAY_OF_MONTH).toString()
+
+                binding.dateMonth.text = month
+                binding.dateDay.text = day
+
+                // Используем статистику за сегодня
+                binding.statsPages.text = libraryStats.todayPagesRead.toString()
+                binding.statsMinutes.text = libraryStats.todayMinutesRead.toString()
+
                 binding.statsPlanned.text = libraryStats.plannedCount.toString()
                 binding.statsInProgress.text = libraryStats.inProgressCount.toString()
                 binding.statsCompleted.text = libraryStats.completedCount.toString()
-                binding.statsTotalBooks.text = libraryStats.totalBooks.toString()
+                binding.statsTotalBooks.text = libraryStats.totalBooksInHistory.toString()
             } else {
-                binding.statsContainer.visibility = android.view.View.GONE
-                binding.moduleStatus.visibility = android.view.View.VISIBLE
-                binding.moduleStatus.text = if (module.isAvailable) "Активен" else "В разработке"
-                binding.moduleStatus.setTextColor(
+                binding.libraryContent.visibility = android.view.View.GONE
+                binding.regularContent.visibility = android.view.View.VISIBLE
+
+                binding.regularContent.layoutParams.height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+
+                binding.regularIcon.setImageResource(module.iconRes)
+                binding.regularTitle.text = module.title
+                binding.regularStatus.text = if (module.isAvailable) "Активен" else "В разработке"
+                binding.regularStatus.setTextColor(
                     if (module.isAvailable) {
                         binding.root.context.getColor(android.R.color.holo_green_dark)
                     } else {
