@@ -178,13 +178,16 @@ class HistoryTableAdapter(
     private fun createFixedRow(book: BookProgress): LinearLayout {
         return LinearLayout(fixedColumnLayout!!.context).apply {
             orientation = LinearLayout.HORIZONTAL
+
             addView(createFixedCell(
                 text = book.title,
                 widthDp = 200,
                 isClickable = true,
                 onClick = { onBookClick(book.bookId) },
-                gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START,
+                isMultiLine = true // ✅ Включаем перенос строк для названия
             ))
+
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 rowHeightPx
@@ -220,6 +223,7 @@ class HistoryTableAdapter(
         onClick: (() -> Unit)? = null,
         isHeader: Boolean = false,
         isTotal: Boolean = false,
+        isMultiLine: Boolean = false, // ✅ Новый параметр
         gravity: Int = Gravity.CENTER,
         backgroundTransparent: Boolean = false,
         textBlack: Boolean = false
@@ -229,7 +233,11 @@ class HistoryTableAdapter(
             setPadding(12, 12, 12, 12)
             textSize = 14f
             this.gravity = gravity
-            maxLines = 1
+
+            // Настройки переноса текста
+            maxLines = if (isMultiLine) Int.MAX_VALUE else 1
+            ellipsize = if (isMultiLine) null else android.text.TextUtils.TruncateAt.END
+
             when {
                 isHeader -> {
                     setTextColor(Color.WHITE)
@@ -249,11 +257,15 @@ class HistoryTableAdapter(
                     setBackgroundColor(Color.TRANSPARENT)
                 }
             }
+
             if (isClickable && onClick != null) {
                 setOnClickListener { onClick() }
                 setTextColor(resources.getColor(R.color.purple_501, null))
             }
-            layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), rowHeightPx)
+
+            // Высота ячейки: растягивается по содержимому для многострочного текста
+            val cellHeight = if (isMultiLine) LinearLayout.LayoutParams.WRAP_CONTENT else rowHeightPx
+            layoutParams = LinearLayout.LayoutParams(dpToPx(widthDp), cellHeight)
         }
     }
 
