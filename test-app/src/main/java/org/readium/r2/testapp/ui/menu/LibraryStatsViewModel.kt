@@ -13,11 +13,11 @@ import java.time.LocalDate
 import kotlinx.coroutines.flow.first
 
 data class LibraryStats(
-    val todayPagesRead: Int = 0,        // Страницы за сегодня
-    val todayMinutesRead: Long = 0,     // Минуты за сегодня
-    val plannedCount: Int = 0,          // В плане (из истории)
-    val inProgressCount: Int = 0,       // В процессе (из истории)
-    val completedCount: Int = 0,        // Прочитано (из истории)
+    val todayPagesRead: Int = 0,
+    val todayMinutesRead: Long = 0,
+    val plannedCount: Int = 0,
+    val inProgressCount: Int = 0,
+    val completedCount: Int = 0,
     val totalBooks: Int = 0,
     val totalBooksInHistory: Int = 0
 )
@@ -29,13 +29,9 @@ class LibraryStatsViewModel(application: Application) : AndroidViewModel(applica
     private val _stats = MutableStateFlow(LibraryStats())
     val stats: StateFlow<LibraryStats> = _stats.asStateFlow()
 
-    init {
-        loadStats()
-    }
-
     fun loadStats() {
         viewModelScope.launch {
-            // Получаем ВСЕ книги из истории (для статусов)
+            // Получаем ВСЕ книги из истории
             val allBooksFromHistory = app.bookRepository.booksForHistory().first()
             val totalBooksInHistory = allBooksFromHistory.size
 
@@ -52,40 +48,30 @@ class LibraryStatsViewModel(application: Application) : AndroidViewModel(applica
                 todayMinutesRead += (stat.hoursRead * 60).toLong()
             }
 
-            // Рассчитываем статусы на основе ВСЕХ книг из истории
-            val stats = calculateStats(allBooksFromHistory, totalBooksInHistory, todayPagesRead, todayMinutesRead)
-            _stats.value = stats
-        }
-    }
+            // Рассчитываем статусы
+            var plannedCount = 0
+            var inProgressCount = 0
+            var completedCount = 0
 
-    private fun calculateStats(
-        books: List<Book>,
-        totalBooksInHistory: Int,
-        todayPagesRead: Int,
-        todayMinutesRead: Long
-    ): LibraryStats {
-        var plannedCount = 0
-        var inProgressCount = 0
-        var completedCount = 0
-
-        for (book in books) {
-            val status = getBookStatus(book)
-            when {
-                status.contains("Прочитано") -> completedCount++
-                status.contains("В процессе") -> inProgressCount++
-                else -> plannedCount++
+            for (book in allBooksFromHistory) {
+                val status = getBookStatus(book)
+                when {
+                    status.contains("Прочитано") -> completedCount++
+                    status.contains("В процессе") -> inProgressCount++
+                    else -> plannedCount++
+                }
             }
-        }
 
-        return LibraryStats(
-            todayPagesRead = todayPagesRead,
-            todayMinutesRead = todayMinutesRead,
-            plannedCount = plannedCount,
-            inProgressCount = inProgressCount,
-            completedCount = completedCount,
-            totalBooks = books.size,
-            totalBooksInHistory = totalBooksInHistory
-        )
+            _stats.value = LibraryStats(
+                todayPagesRead = todayPagesRead,
+                todayMinutesRead = todayMinutesRead,
+                plannedCount = plannedCount,
+                inProgressCount = inProgressCount,
+                completedCount = completedCount,
+                totalBooks = allBooksFromHistory.size,
+                totalBooksInHistory = totalBooksInHistory
+            )
+        }
     }
 
     private fun getBookStatus(book: Book): String {

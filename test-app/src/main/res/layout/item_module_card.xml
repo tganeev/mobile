@@ -171,7 +171,7 @@
                             android:text="Месяц"
                             android:textSize="11sp"
                             android:textStyle="bold"
-                            android:textColor="#FF0000"
+                            android:textColor="#03DAC5"
                             android:textAllCaps="true" />
 
                         <TextView
@@ -181,7 +181,7 @@
                             android:text="Число"
                             android:textSize="11sp"
                             android:textStyle="bold"
-                            android:textColor="#FF0000" />
+                            android:textColor="#03DAC5" />
 
                     </LinearLayout>
 

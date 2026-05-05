@@ -39,6 +39,12 @@ class MenuFragment : Fragment() {
         observeLibraryStats()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Обновляем статистику каждый раз при возврате на главный экран
+        libraryViewModel.loadStats()
+    }
+
     private fun setupModulesGrid() {
         modulesAdapter = ModulesAdapter { module ->
             handleModuleClick(module)
@@ -48,7 +54,7 @@ class MenuFragment : Fragment() {
 
     private fun loadModules() {
         val modules = listOf(
-            Module(1, "Библиотека", R.drawable.ic_module_reader, isAvailable = true),  // <-- маленькая карточка в сетке
+            Module(1, "Библиотека", R.drawable.ic_module_reader, isAvailable = true),
             Module(2, "Математика", R.drawable.ic_module_math, isAvailable = false),
             Module(3, "Будильник", R.drawable.ic_module_alarm, isAvailable = true),
             Module(4, "Состояния", R.drawable.ic_module_emotions, isAvailable = false),
