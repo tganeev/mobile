@@ -506,25 +506,20 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
     private fun saveNoteToDatabase(locator: Locator, selectedText: String, noteText: String) {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                // Получаем книгу из репозитория
-                val book = (requireContext().applicationContext as Application).bookRepository.get(model.readerInitData.bookId)
-
-                // Определяем содержание заметки:
-                // 1. Если пользователь ввел текст - используем его
-                // 2. Если нет, но есть выделенный текст - используем выделенный текст
-                // 3. Если ничего нет - не сохраняем
-                val content = when {
-                    noteText.isNotEmpty() -> noteText
-                    selectedText.isNotEmpty() -> selectedText
-                    else -> {
-                        Toast.makeText(requireContext(), "Нет текста для сохранения", Toast.LENGTH_SHORT).show()
-                        return@launch
-                    }
+                // Если нет ни выделенного текста, ни комментария — выходим
+                if (selectedText.isEmpty() && noteText.isEmpty()) {
+                    Toast.makeText(requireContext(), "Нет текста для сохранения", Toast.LENGTH_SHORT).show()
+                    return@launch
                 }
 
-                // Комментарий - только если пользователь ввел что-то ОТЛИЧНОЕ от выделенного текста
-                val myComment = if (noteText.isNotEmpty() && noteText != selectedText) noteText else null
+                // Основной контент — это всегда выделенный текст.
+                // Если выделения нет, но пользователь ввёл текст — используем его как основу.
+                val content = if (selectedText.isNotEmpty()) selectedText else noteText
 
+                // Комментарий сохраняется отдельно, если пользователь что-то ввёл в поле
+                val myComment = noteText.takeIf { it.isNotEmpty() }
+
+                val book = (requireContext().applicationContext as Application).bookRepository.get(model.readerInitData.bookId)
                 val note = Note(
                     content = content,
                     myComment = myComment,
@@ -533,10 +528,8 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                     category = "Общее",
                     creationDate = System.currentTimeMillis()
                 )
-
                 (requireContext().applicationContext as Application).bookRepository.insertNote(note)
-
-                Timber.d("Note saved: content=$content, myComment=$myComment")
+                Timber.d("Note saved: content='${content.take(30)}...', myComment=$myComment")
             } catch (e: Exception) {
                 Timber.e(e, "Failed to save note")
                 Toast.makeText(requireContext(), "Ошибка сохранения заметки: ${e.message}", Toast.LENGTH_SHORT).show()
