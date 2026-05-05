@@ -128,7 +128,7 @@ class HistoryTableAdapter(
             orientation = LinearLayout.HORIZONTAL
             addView(createMergedCell(
                 text = formatter(totalSum),
-                widthDp = 150 + 150 + 100 + 80,
+                widthDp = 330,
                 isTotal = true,
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START,
                 backgroundTransparent = true,
