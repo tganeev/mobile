@@ -1,7 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:maxHeight="350dp"
+    android:orientation="vertical">
+
+    <!-- Заголовок с шестерёнкой -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:title="Перевод"
+        app:titleTextColor="@android:color/white"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:navigationContentDescription="Закрыть">
+
+        <ImageView
+            android:id="@+id/settingsButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="end"
+            android:padding="12dp"
+            android:src="@drawable/ic_baseline_settings_24"
+            app:tint="@android:color/white"
+            android:contentDescription="Настройки языка" />
+
+    </androidx.appcompat.widget.Toolbar>
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,70 +42,63 @@
             android:textStyle="bold"
             android:layout_marginBottom="8dp" />
 
+        <!-- Исходный текст с фиксированной высотой -->
         <TextView
             android:id="@+id/originalText"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="80dp"
             android:padding="12dp"
             android:background="#f0f0f0"
             android:textSize="14sp"
+            android:textColor="@android:color/black"
+            android:scrollbars="vertical"
+            android:maxLines="100"
             android:layout_marginBottom="16dp" />
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Язык оригинала:"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <Spinner
-            android:id="@+id/sourceLanguageSpinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Язык перевода:"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <Spinner
-            android:id="@+id/targetLanguageSpinner"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp" />
-
+        <!-- Информация о выбранных языках -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:layout_marginBottom="16dp">
 
-            <Button
-                android:id="@+id/translateButton"
+            <TextView
+                android:id="@+id/sourceLanguageText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Перевести"
-                android:layout_marginEnd="8dp" />
+                android:text="Английский →"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:gravity="center" />
 
-            <Button
-                android:id="@+id/downloadButton"
+            <TextView
+                android:id="@+id/targetLanguageText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Скачать модель"
-                android:visibility="gone" />
+                android:text="Русский"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:gravity="center" />
 
         </LinearLayout>
+
+        <!-- Кнопка скачивания модели -->
+        <Button
+            android:id="@+id/downloadButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Скачать модель для перевода"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp" />
 
         <ProgressBar
             android:id="@+id/progressBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:visibility="gone" />
+            android:visibility="gone"
+            android:layout_marginBottom="8dp" />
 
         <TextView
             android:id="@+id/loadingText"
@@ -87,25 +106,29 @@
             android:layout_height="wrap_content"
             android:text=""
             android:gravity="center"
-            android:visibility="gone" />
+            android:visibility="gone"
+            android:layout_marginBottom="16dp" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Перевод:"
             android:textStyle="bold"
-            android:layout_marginTop="16dp"
             android:layout_marginBottom="8dp" />
 
+        <!-- Перевод с фиксированной высотой -->
         <TextView
             android:id="@+id/resultText"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="80dp"
             android:padding="12dp"
-            android:background="#e8f0fe"
+            android:background="#f0f0f0"
             android:textSize="14sp"
+            android:textColor="@android:color/black"
+            android:scrollbars="vertical"
+            android:maxLines="100"
             android:visibility="gone" />
 
     </LinearLayout>
 
-</ScrollView>
+</LinearLayout>

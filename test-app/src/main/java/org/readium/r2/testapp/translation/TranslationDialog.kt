@@ -1,19 +1,23 @@
 package org.readium.r2.testapp.translation
 
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.method.ScrollingMovementMethod
 import android.view.LayoutInflater
 import android.view.View
+
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ProgressBar
-import android.widget.Spinner
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.launch
+import org.readium.r2.testapp.R
+import kotlin.math.min
 
 class TranslationDialog : DialogFragment() {
 
@@ -21,14 +25,17 @@ class TranslationDialog : DialogFragment() {
     private var onTranslationComplete: ((String) -> Unit)? = null
 
     private lateinit var translationService: TranslationService
-    private lateinit var sourceLanguageSpinner: Spinner
-    private lateinit var targetLanguageSpinner: Spinner
-    private lateinit var translateButton: Button
+
+    private var sourceLanguageCode: String = TranslateLanguage.ENGLISH
+    private var targetLanguageCode: String = TranslateLanguage.RUSSIAN
+
     private lateinit var downloadButton: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var resultText: TextView
     private lateinit var loadingText: TextView
     private lateinit var originalText: TextView
+    private lateinit var sourceLanguageText: TextView
+    private lateinit var targetLanguageText: TextView
 
     companion object {
         fun newInstance(selectedText: String): TranslationDialog {
@@ -44,6 +51,10 @@ class TranslationDialog : DialogFragment() {
         super.onCreate(savedInstanceState)
         selectedText = arguments?.getString("selected_text") ?: ""
         translationService = TranslationService(requireContext())
+
+        loadLanguageSettings()
+
+        setStyle(STYLE_NO_FRAME, androidx.appcompat.R.style.Theme_AppCompat_DayNight_NoActionBar)
     }
 
     override fun onCreateView(
@@ -51,133 +62,147 @@ class TranslationDialog : DialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
-        return inflater.inflate(org.readium.r2.testapp.R.layout.dialog_translation, container, false)
+        return inflater.inflate(R.layout.dialog_translation, container, false)
     }
 
-    @Suppress("DEPRECATION")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        sourceLanguageSpinner = view.findViewById(org.readium.r2.testapp.R.id.sourceLanguageSpinner)
-        targetLanguageSpinner = view.findViewById(org.readium.r2.testapp.R.id.targetLanguageSpinner)
-        translateButton = view.findViewById(org.readium.r2.testapp.R.id.translateButton)
-        downloadButton = view.findViewById(org.readium.r2.testapp.R.id.downloadButton)
-        progressBar = view.findViewById(org.readium.r2.testapp.R.id.progressBar)
-        resultText = view.findViewById(org.readium.r2.testapp.R.id.resultText)
-        loadingText = view.findViewById(org.readium.r2.testapp.R.id.loadingText)
-        originalText = view.findViewById(org.readium.r2.testapp.R.id.originalText)
+        dialog?.window?.let { window ->
+            window.setBackgroundDrawableResource(android.R.color.transparent)
 
-        setupLanguageSpinners()
+            val drawable = GradientDrawable().apply {
+                setColor(ContextCompat.getColor(requireContext(), R.color.background_dialog))
+                cornerRadius = 24f
+            }
+            window.setBackgroundDrawable(drawable)
+        }
+
+        val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
+        val settingsButton = view.findViewById<View>(R.id.settingsButton)
+
+        downloadButton = view.findViewById(R.id.downloadButton)
+        progressBar = view.findViewById(R.id.progressBar)
+        resultText = view.findViewById(R.id.resultText)
+        loadingText = view.findViewById(R.id.loadingText)
+        originalText = view.findViewById(R.id.originalText)
+        sourceLanguageText = view.findViewById(R.id.sourceLanguageText)
+        targetLanguageText = view.findViewById(R.id.targetLanguageText)
+
+        // Включаем скролл для TextView
+        originalText.movementMethod = ScrollingMovementMethod()
+        originalText.isVerticalScrollBarEnabled = true
+
+        resultText.movementMethod = ScrollingMovementMethod()
+        resultText.isVerticalScrollBarEnabled = true
+
+        toolbar.setNavigationOnClickListener {
+            dismiss()
+        }
+
+        settingsButton.setOnClickListener {
+            showLanguageSettings()
+        }
+
         setupButtons()
 
         originalText.text = selectedText
+        updateLanguageDisplay()
 
-        // Автоматически проверяем и загружаем модель для выбранных языков
-        checkAndDownloadModel()
+        startTranslation()
     }
 
-    private fun setupLanguageSpinners() {
+    override fun onStart() {
+        super.onStart()
+        dialog?.window?.let { window ->
+            val displayMetrics = resources.displayMetrics
+            val maxWidthDp = 400
+            val maxWidthPx = (maxWidthDp * displayMetrics.density).toInt()
+            val width = min((displayMetrics.widthPixels * 0.85).toInt(), maxWidthPx)
+
+            val params = window.attributes
+            params.width = width
+            params.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            window.attributes = params
+        }
+    }
+
+    private fun loadLanguageSettings() {
+        val prefs = requireContext().getSharedPreferences("translation_prefs", android.content.Context.MODE_PRIVATE)
+        sourceLanguageCode = prefs.getString("source_language", TranslateLanguage.ENGLISH) ?: TranslateLanguage.ENGLISH
+        targetLanguageCode = prefs.getString("target_language", TranslateLanguage.RUSSIAN) ?: TranslateLanguage.RUSSIAN
+    }
+
+    private fun saveLanguageSettings() {
+        val prefs = requireContext().getSharedPreferences("translation_prefs", android.content.Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("source_language", sourceLanguageCode)
+            .putString("target_language", targetLanguageCode)
+            .apply()
+    }
+
+    private fun updateLanguageDisplay() {
         val languages = TranslationService.SUPPORTED_LANGUAGES
-        val languageNames = languages.map { it.second }.toList()
+        val sourceName = languages.find { it.first == sourceLanguageCode }?.second ?: "Английский"
+        val targetName = languages.find { it.first == targetLanguageCode }?.second ?: "Русский"
 
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, languageNames)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        sourceLanguageText.text = sourceName
+        targetLanguageText.text = targetName
+    }
 
-        sourceLanguageSpinner.adapter = adapter
-        targetLanguageSpinner.adapter = adapter
-
-        val englishIndex = languages.indexOfFirst { it.first == TranslateLanguage.ENGLISH }
-        val russianIndex = languages.indexOfFirst { it.first == TranslateLanguage.RUSSIAN }
-
-        if (englishIndex >= 0) sourceLanguageSpinner.setSelection(englishIndex)
-        if (russianIndex >= 0) targetLanguageSpinner.setSelection(russianIndex)
-
-        // Слушатели для перезагрузки модели при смене языка
-        sourceLanguageSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                checkAndDownloadModel()
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+    private fun showLanguageSettings() {
+        val dialog = LanguageSettingsDialog.newInstance(
+            sourceLanguageCode,
+            targetLanguageCode
+        ) { newSource, newTarget ->
+            sourceLanguageCode = newSource
+            targetLanguageCode = newTarget
+            saveLanguageSettings()
+            updateLanguageDisplay()
+            startTranslation()
         }
-
-        targetLanguageSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
-                checkAndDownloadModel()
-            }
-            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-        }
+        dialog.show(childFragmentManager, "LanguageSettings")
     }
 
     private fun setupButtons() {
-        translateButton.setOnClickListener {
-            performTranslation()
-        }
-
         downloadButton.setOnClickListener {
             downloadModel()
         }
     }
 
-    private fun checkAndDownloadModel() {
+    private fun startTranslation() {
         lifecycleScope.launch {
-            val languages = TranslationService.SUPPORTED_LANGUAGES
-            val sourceIndex = sourceLanguageSpinner.selectedItemPosition
-            val targetIndex = targetLanguageSpinner.selectedItemPosition
+            val isDownloaded = translationService.isModelDownloaded(sourceLanguageCode, targetLanguageCode)
 
-            if (sourceIndex < 0 || targetIndex < 0) return@launch
-
-            val sourceLanguage = languages[sourceIndex].first
-            val targetLanguage = languages[targetIndex].first
-
-            // Проверяем, загружена ли модель
-            val isDownloaded = translationService.isModelDownloaded(sourceLanguage, targetLanguage)
-
-            if (isDownloaded) {
-                downloadButton.visibility = View.GONE
-                translateButton.isEnabled = true
-                translateButton.text = "Перевести"
-            } else {
+            if (!isDownloaded) {
                 downloadButton.visibility = View.VISIBLE
                 downloadButton.isEnabled = true
-                translateButton.isEnabled = false
-                translateButton.text = "Сначала скачайте модель"
-                resultText.text = "Для перевода с ${languages[sourceIndex].second} на ${languages[targetIndex].second} необходимо скачать языковую модель (требуется Wi-Fi)"
+                resultText.text = "Для перевода необходимо скачать языковую модель (требуется Wi-Fi)"
                 resultText.visibility = View.VISIBLE
+                return@launch
             }
-        }
-    }
 
-    private fun performTranslation() {
-        val languages = TranslationService.SUPPORTED_LANGUAGES
-        val sourceIndex = sourceLanguageSpinner.selectedItemPosition
-        val targetIndex = targetLanguageSpinner.selectedItemPosition
-
-        if (sourceIndex < 0 || targetIndex < 0) return
-
-        val sourceLanguage = languages[sourceIndex].first
-        val targetLanguage = languages[targetIndex].first
-
-        lifecycleScope.launch {
+            downloadButton.visibility = View.GONE
             setLoading(true)
 
-            val result = translationService.translate(selectedText, sourceLanguage, targetLanguage)
+            val translationResult = translationService.translate(selectedText, sourceLanguageCode, targetLanguageCode)
 
             setLoading(false)
 
-            when (result) {
+            when (translationResult) {
                 is TranslationResult.Success -> {
-                    resultText.text = result.translatedText
+                    resultText.text = translationResult.translatedText
                     resultText.visibility = View.VISIBLE
-                    onTranslationComplete?.invoke(result.translatedText)
+                    onTranslationComplete?.invoke(translationResult.translatedText)
                 }
                 is TranslationResult.ModelNotDownloaded -> {
-                    resultText.text = "Языковая модель не загружена. Нажмите 'Скачать модель'"
-                    resultText.visibility = View.VISIBLE
                     downloadButton.visibility = View.VISIBLE
                     downloadButton.isEnabled = true
+                    resultText.text = "Языковая модель не загружена. Нажмите 'Скачать модель'"
+                    resultText.visibility = View.VISIBLE
                 }
                 is TranslationResult.Error -> {
-                    resultText.text = "Ошибка перевода: ${result.message}"
+                    resultText.text = "Ошибка перевода: ${translationResult.message}"
                     resultText.visibility = View.VISIBLE
                 }
                 TranslationResult.Downloading -> {}
@@ -186,48 +211,21 @@ class TranslationDialog : DialogFragment() {
     }
 
     private fun downloadModel() {
-        val languages = TranslationService.SUPPORTED_LANGUAGES
-        val sourceIndex = sourceLanguageSpinner.selectedItemPosition
-        val targetIndex = targetLanguageSpinner.selectedItemPosition
-
-        if (sourceIndex < 0 || targetIndex < 0) return
-
-        val sourceLanguage = languages[sourceIndex].first
-        val targetLanguage = languages[targetIndex].first
-        val sourceName = languages[sourceIndex].second
-        val targetName = languages[targetIndex].second
-
-        // Показываем подтверждение о скачивании
-        AlertDialog.Builder(requireContext())
-            .setTitle("Скачать языковую модель")
-            .setMessage("Для перевода с $sourceName на $targetName необходимо скачать языковую модель (размер ~50 МБ). Рекомендуется использовать Wi-Fi. Продолжить?")
-            .setPositiveButton("Скачать") { _, _ ->
-                performDownload(sourceLanguage, targetLanguage)
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    private fun performDownload(sourceLanguage: String, targetLanguage: String) {
         lifecycleScope.launch {
             downloadButton.isEnabled = false
-            translateButton.isEnabled = false
             progressBar.visibility = View.VISIBLE
             loadingText.visibility = View.VISIBLE
             loadingText.text = "Скачивание модели... 0%"
 
             try {
-                val success = translationService.downloadModel(sourceLanguage, targetLanguage)
+                val success = translationService.downloadModel(sourceLanguageCode, targetLanguageCode)
 
                 progressBar.visibility = View.GONE
                 loadingText.visibility = View.GONE
 
                 if (success) {
                     downloadButton.visibility = View.GONE
-                    translateButton.isEnabled = true
-                    translateButton.text = "Перевести"
-                    resultText.text = "Модель успешно загружена. Теперь можно перевести текст."
-                    resultText.visibility = View.VISIBLE
+                    startTranslation()
                 } else {
                     resultText.text = "Не удалось скачать модель. Проверьте подключение к интернету."
                     resultText.visibility = View.VISIBLE
@@ -244,11 +242,9 @@ class TranslationDialog : DialogFragment() {
     }
 
     private fun setLoading(isLoading: Boolean) {
-        translateButton.isEnabled = !isLoading
-        sourceLanguageSpinner.isEnabled = !isLoading
-        targetLanguageSpinner.isEnabled = !isLoading
         progressBar.visibility = if (isLoading) View.VISIBLE else View.GONE
         loadingText.visibility = if (isLoading) View.VISIBLE else View.GONE
+        loadingText.text = if (isLoading) "Перевод..." else ""
     }
 
     fun setOnTranslationComplete(callback: (String) -> Unit) {
