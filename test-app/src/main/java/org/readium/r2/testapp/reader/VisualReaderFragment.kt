@@ -81,6 +81,7 @@ import org.readium.r2.testapp.databinding.FragmentReaderBinding
 import org.readium.r2.testapp.reader.tts.TtsControls
 import org.readium.r2.testapp.reader.tts.TtsPreferencesBottomSheetDialogFragment
 import org.readium.r2.testapp.reader.tts.TtsViewModel
+import org.readium.r2.testapp.translation.TranslationDialog
 import org.readium.r2.testapp.utils.clearPadding
 import org.readium.r2.testapp.utils.extensions.confirmDialog
 import org.readium.r2.testapp.utils.extensions.throttleLatest
@@ -443,6 +444,7 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                 menu.findItem(R.id.underline).isVisible = false
                 menu.findItem(R.id.note).isVisible = false
                 menu.findItem(R.id.send_to_notes).isVisible = true
+                menu.findItem(R.id.translate).isVisible = true  // ДОБАВИТЬ
             }
             return true
         }
@@ -453,10 +455,26 @@ abstract class VisualReaderFragment : BaseReaderFragment() {
                 R.id.underline -> showHighlightPopupWithStyle(Highlight.Style.UNDERLINE)
                 R.id.note -> showAnnotationPopup()
                 R.id.send_to_notes -> showSendToNotesDialog()
+                R.id.translate -> showTranslationDialog()  // ДОБАВИТЬ
                 else -> return false
             }
             mode.finish()
             return true
+        }
+    }
+
+    private fun showTranslationDialog() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val navigator = navigator as? SelectableNavigator ?: return@launch
+            val selection = navigator.currentSelection() ?: return@launch
+            val selectedText = selection.locator.text?.highlight ?: ""
+
+            if (selectedText.isNotEmpty()) {
+                val dialog = TranslationDialog.newInstance(selectedText)
+                dialog.show(childFragmentManager, "TranslationDialog")
+            } else {
+                Toast.makeText(requireContext(), "Не выделен текст для перевода", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

@@ -33,6 +33,15 @@
     <string name="catalog_list_more">More</string>
     <string name="catalog_detail_download_button">Download</string>
 
+    <!-- translator -->
+    <string name="translate">Перевести</string>
+    <string name="original_text">Исходный текст:</string>
+    <string name="source_language">Язык оригинала:</string>
+    <string name="target_language">Язык перевода:</string>
+    <string name="translation">Перевод:</string>
+    <string name="download_model">Скачать модель</string>
+    <string name="translating">Перевод...</string>
+
 
     <!-- Accessibility -->
 

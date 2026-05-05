@@ -112,6 +112,12 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.jsoup)
 
+    // ML Kit Translate
+    implementation("com.google.mlkit:translate:17.0.2")
+
+    // ML Kit для работы с моделями
+    implementation("com.google.mlkit:language-id:17.0.5")
+
     implementation(libs.bundles.media3)
 
     // Room database
