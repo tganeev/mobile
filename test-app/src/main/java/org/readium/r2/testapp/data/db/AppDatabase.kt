@@ -15,9 +15,10 @@ import org.readium.r2.testapp.data.model.*
         Catalog::class,
         ReadingStat::class,
         SleepRecord::class,
-        Note::class
+        Note::class,
+        Vocabulary::class
     ],
-    version = 11,  // Увеличиваем версию
+    version = 12,  // Увеличиваем версию
     exportSchema = false
 )
 @TypeConverters(HighlightConverters::class, Converters::class)
@@ -27,6 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun catalogDao(): CatalogDao
     abstract fun sleepDao(): SleepDao
     abstract fun notesDao(): NotesDao
+    abstract fun vocabularyDao(): VocabularyDao
 
     companion object {
         @Volatile

@@ -5,23 +5,26 @@ import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
 import android.view.LayoutInflater
 import android.view.View
-
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.snackbar.Snackbar
 import com.google.mlkit.nl.translate.TranslateLanguage
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.data.model.Vocabulary
 import kotlin.math.min
 
 class TranslationDialog : DialogFragment() {
 
     private var selectedText: String = ""
+    private var translatedText: String = ""
     private var onTranslationComplete: ((String) -> Unit)? = null
 
     private lateinit var translationService: TranslationService
@@ -36,6 +39,7 @@ class TranslationDialog : DialogFragment() {
     private lateinit var originalText: TextView
     private lateinit var sourceLanguageText: TextView
     private lateinit var targetLanguageText: TextView
+    private lateinit var saveToVocabularyButton: ImageView
 
     companion object {
         fun newInstance(selectedText: String): TranslationDialog {
@@ -80,6 +84,7 @@ class TranslationDialog : DialogFragment() {
 
         val toolbar = view.findViewById<Toolbar>(R.id.toolbar)
         val settingsButton = view.findViewById<View>(R.id.settingsButton)
+        saveToVocabularyButton = view.findViewById(R.id.saveToVocabularyButton)
 
         downloadButton = view.findViewById(R.id.downloadButton)
         progressBar = view.findViewById(R.id.progressBar)
@@ -102,6 +107,10 @@ class TranslationDialog : DialogFragment() {
 
         settingsButton.setOnClickListener {
             showLanguageSettings()
+        }
+
+        saveToVocabularyButton.setOnClickListener {
+            saveToVocabulary()
         }
 
         setupButtons()
@@ -179,6 +188,7 @@ class TranslationDialog : DialogFragment() {
                 downloadButton.isEnabled = true
                 resultText.text = "Для перевода необходимо скачать языковую модель (требуется Wi-Fi)"
                 resultText.visibility = View.VISIBLE
+                saveToVocabularyButton.visibility = View.GONE
                 return@launch
             }
 
@@ -191,8 +201,10 @@ class TranslationDialog : DialogFragment() {
 
             when (translationResult) {
                 is TranslationResult.Success -> {
-                    resultText.text = translationResult.translatedText
+                    translatedText = translationResult.translatedText
+                    resultText.text = translatedText
                     resultText.visibility = View.VISIBLE
+                    saveToVocabularyButton.visibility = View.VISIBLE
                     onTranslationComplete?.invoke(translationResult.translatedText)
                 }
                 is TranslationResult.ModelNotDownloaded -> {
@@ -200,12 +212,37 @@ class TranslationDialog : DialogFragment() {
                     downloadButton.isEnabled = true
                     resultText.text = "Языковая модель не загружена. Нажмите 'Скачать модель'"
                     resultText.visibility = View.VISIBLE
+                    saveToVocabularyButton.visibility = View.GONE
                 }
                 is TranslationResult.Error -> {
                     resultText.text = "Ошибка перевода: ${translationResult.message}"
                     resultText.visibility = View.VISIBLE
+                    saveToVocabularyButton.visibility = View.GONE
                 }
                 TranslationResult.Downloading -> {}
+            }
+        }
+    }
+
+    private fun saveToVocabulary() {
+        if (selectedText.isBlank() || translatedText.isBlank()) {
+            Snackbar.make(requireView(), "Нет текста для сохранения", Snackbar.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                val app = requireContext().applicationContext as org.readium.r2.testapp.Application
+                val word = Vocabulary(
+                    sourceWord = selectedText.take(200),  // Ограничиваем длину
+                    translatedWord = translatedText.take(200)
+                )
+                app.bookRepository.insertWord(word)
+
+                Snackbar.make(requireView(), "Слово сохранено в банк слов", Snackbar.LENGTH_SHORT).show()
+                saveToVocabularyButton.visibility = View.GONE
+            } catch (e: Exception) {
+                Snackbar.make(requireView(), "Ошибка сохранения: ${e.message}", Snackbar.LENGTH_SHORT).show()
             }
         }
     }

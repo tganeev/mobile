@@ -82,12 +82,10 @@ class Application : android.app.Application() {
 
         bookRepository = BookRepository(
             database.booksDao(),
-            database.notesDao()
+            database.notesDao(),
+            database.vocabularyDao()
         )
 
-
-        // Инициализация bookRepository ПЕРВОЙ, так как она нужна другим компонентам
-        bookRepository = BookRepository(database.booksDao(), database.notesDao())
 
 
 

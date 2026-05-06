@@ -39,6 +39,8 @@
         android:id="@+id/action_bookshelf_to_notes"
         app:destination="@id/notesFragment" />
 
+
+
     <!-- Будильник - настройки -->
     <fragment
         android:id="@+id/alarm_fragment"
@@ -52,6 +54,18 @@
         android:name="org.readium.r2.testapp.alarm.SleepStatsFragment"
         android:label="Статистика сна"
         tools:layout="@layout/fragment_sleep_stats" />
+
+
+    <!-- Банк слов -->
+    <fragment
+        android:id="@+id/vocabularyFragment"
+        android:name="org.readium.r2.testapp.vocabulary.VocabularyFragment"
+        android:label="Банк слов"
+        tools:layout="@layout/fragment_vocabulary" />
+
+    <action
+        android:id="@+id/action_menu_to_vocabulary"
+        app:destination="@id/vocabularyFragment" />
 
     <!-- Действия (actions) -->
     <action

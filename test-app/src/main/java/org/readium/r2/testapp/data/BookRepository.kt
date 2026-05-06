@@ -21,10 +21,13 @@ import org.readium.r2.testapp.data.model.Note
 import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.utils.extensions.readium.authorName
 import timber.log.Timber
+import org.readium.r2.testapp.data.db.VocabularyDao
+import org.readium.r2.testapp.data.model.Vocabulary
 
 class BookRepository(
     private val booksDao: BooksDao,
     private val notesDao: NotesDao,
+    private val vocabularyDao: VocabularyDao
 ) {
     // ===== ОСНОВНЫЕ МЕТОДЫ =====
 
@@ -247,6 +250,18 @@ class BookRepository(
     fun getAllNotes(): Flow<List<Note>> = notesDao.getAllNotes()
 
     fun searchNotes(query: String): Flow<List<Note>> = notesDao.searchNotes(query)
+
+    // ===== МЕТОДЫ ДЛЯ VOCABULARY (БАНК СЛОВ) =====
+
+    suspend fun insertWord(word: Vocabulary): Long = vocabularyDao.insertWord(word)
+
+    fun getAllWords(): Flow<List<Vocabulary>> = vocabularyDao.getAllWords()
+
+    suspend fun deleteWord(id: Long) = vocabularyDao.deleteWord(id)
+
+    suspend fun deleteAllWords() = vocabularyDao.deleteAllWords()
+
+    fun searchWords(query: String): Flow<List<Vocabulary>> = vocabularyDao.searchWords(query)
 
 
     // ===== МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====

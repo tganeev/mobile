@@ -17,6 +17,17 @@
         app:navigationIcon="?attr/homeAsUpIndicator"
         app:navigationContentDescription="Закрыть">
 
+        <!-- Кнопка "Сохранить в банк слов" -->
+        <ImageView
+            android:id="@+id/saveToVocabularyButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
+            android:src="@drawable/ic_baseline_bookmark_add_24"
+            app:tint="@android:color/white"
+            android:contentDescription="Сохранить в банк слов"
+            android:visibility="gone" />
+
         <ImageView
             android:id="@+id/settingsButton"
             android:layout_width="48dp"

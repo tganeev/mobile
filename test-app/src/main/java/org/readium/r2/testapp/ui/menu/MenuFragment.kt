@@ -59,7 +59,7 @@ class MenuFragment : Fragment() {
             Module(3, "Будильник", R.drawable.ic_module_alarm, isAvailable = true),
             Module(4, "Состояния", R.drawable.ic_module_emotions, isAvailable = false),
             Module(5, "Календарь", R.drawable.ic_module_calendar, isAvailable = false),
-            Module(6, "Банк слов", R.drawable.ic_module_vocabulary, isAvailable = false),
+            Module(6, "Банк слов", R.drawable.ic_module_vocabulary, isAvailable = true),
             Module(7, "База знаний", R.drawable.ic_module_notes, isAvailable = false),
             Module(8, "Вокал", R.drawable.ic_module_vocal, isAvailable = false)
         )
@@ -78,8 +78,14 @@ class MenuFragment : Fragment() {
         when (module.id) {
             1 -> navigateToReader()
             3 -> navigateToAlarm()
+            6 -> navigateToVocabulary()
             else -> showUnderDevelopmentMessage(module)
         }
+    }
+
+    private fun navigateToVocabulary() {
+        val navController = requireActivity().findNavController(R.id.nav_host_fragment)
+        navController.navigate(R.id.action_menu_to_vocabulary)
     }
 
     private fun navigateToReader() {
