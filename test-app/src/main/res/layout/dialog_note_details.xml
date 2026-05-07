@@ -49,8 +49,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="textMultiLine"
-            android:minHeight="80dp"
-            android:maxHeight="120dp"
+            android:minHeight="35dp"
+            android:maxHeight="72dp"
             android:gravity="top"
             android:hint="Добавьте ваш комментарий..." />
 
