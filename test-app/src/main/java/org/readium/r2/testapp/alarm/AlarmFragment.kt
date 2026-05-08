@@ -18,7 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.findNavController
+import androidx.navigation.fragment.findNavController
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
@@ -31,13 +31,12 @@ class AlarmFragment : Fragment() {
     private var isUpdatingMorningFromCode = false
     private var isUpdatingEveningFromCode = false
 
-    // Лаунчер для запроса разрешения на уведомления (Android 13+)
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             Snackbar.make(binding.root, "Разрешение на уведомления получено", Snackbar.LENGTH_SHORT).show()
-            checkAlarmPermissions() // Повторная проверка
+            checkAlarmPermissions()
         } else {
             Snackbar.make(
                 binding.root,
@@ -93,6 +92,9 @@ class AlarmFragment : Fragment() {
         binding.historyButton.setOnClickListener {
             navigateToHistory()
         }
+        binding.logsButton.setOnClickListener {
+            navigateToLogs()
+        }
         binding.fixPermissionButton.setOnClickListener {
             openAlarmSettings()
         }
@@ -125,7 +127,6 @@ class AlarmFragment : Fragment() {
     }
 
     private fun checkAlarmPermissions() {
-        // 1. Проверка разрешений на уведомления (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
                     requireContext(),
@@ -145,7 +146,6 @@ class AlarmFragment : Fragment() {
             }
         }
 
-        // 2. Проверка точных будильников (Android 12+)
         val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!alarmManager.canScheduleExactAlarms()) {
@@ -163,7 +163,6 @@ class AlarmFragment : Fragment() {
             }
         }
 
-        // 3. Проверка оптимизации батареи
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = requireContext().getSystemService(Context.POWER_SERVICE) as PowerManager
             if (!powerManager.isIgnoringBatteryOptimizations(requireContext().packageName)) {
@@ -181,12 +180,10 @@ class AlarmFragment : Fragment() {
             }
         }
 
-        // Если все проверки пройдены
         binding.permissionWarningCard.visibility = View.GONE
     }
 
     private fun openAlarmSettings() {
-        // Определяем, какие настройки открыть
         val alarmManager = requireContext().getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -208,13 +205,25 @@ class AlarmFragment : Fragment() {
     }
 
     private fun navigateToHistory() {
-        val navController = requireView().findNavController()
-        navController.navigate(R.id.action_alarm_to_stats)
+        try {
+            findNavController().navigate(R.id.action_alarm_to_stats)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Snackbar.make(binding.root, "Ошибка навигации: ${e.message}", Snackbar.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun navigateToLogs() {
+        try {
+            findNavController().navigate(R.id.action_alarm_to_logs)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Snackbar.make(binding.root, "Ошибка навигации: ${e.message}", Snackbar.LENGTH_SHORT).show()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        // Проверяем разрешения при возврате на фрагмент
         checkAlarmPermissions()
     }
 

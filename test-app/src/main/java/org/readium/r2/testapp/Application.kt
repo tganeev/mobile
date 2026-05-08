@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.BuildConfig.DEBUG
+import org.readium.r2.testapp.alarm.AlarmLogger
 import org.readium.r2.testapp.alarm.AlarmScheduler
 import org.readium.r2.testapp.alarm.AlarmSoundService
 import org.readium.r2.testapp.data.AlarmPreferencesDataStore
@@ -80,16 +81,15 @@ class Application : android.app.Application() {
 
         val database = AppDatabase.getDatabase(this)
 
+        // ВАЖНО: порядок параметров должен соответствовать конструктору BookRepository
+        // Конструктор: BookRepository(booksDao, notesDao, vocabularyDao, alarmLogDao)
         bookRepository = BookRepository(
-            database.booksDao(),
-            database.notesDao(),
-            database.vocabularyDao()
+            database.booksDao(),      // 1. BooksDao
+            database.notesDao(),      // 2. NotesDao
+            database.vocabularyDao(), // 3. VocabularyDao
+            database.alarmLogDao()    // 4. AlarmLogDao
         )
 
-
-
-
-        // Затем инициализация остальных репозиториев
         sleepRepository = SleepRepository(database.sleepDao())
         alarmPreferencesDataStore = AlarmPreferencesDataStore(this)
 
@@ -120,20 +120,18 @@ class Application : android.app.Application() {
             navigatorPreferences
         )
 
-
-
-        // Инициализация SyncManager ПОСЛЕ bookRepository
         syncManager = SyncManager(this, bookRepository)
 
         historySyncManager = HistorySyncManager(this, this)
 
-        // Запускаем сервис будильника при старте приложения
+        // Инициализируем логгер
+        AlarmLogger.init(this)
+
         startAlarmServices()
     }
 
     private fun startAlarmServices() {
         try {
-            // Запускаем AlarmSoundService в фоне
             val intent = Intent(this, AlarmSoundService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
@@ -145,7 +143,6 @@ class Application : android.app.Application() {
             Timber.e(e, "Failed to start AlarmSoundService")
         }
 
-        // Восстанавливаем будильники после перезапуска
         coroutineScope.launch(Dispatchers.IO) {
             alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
                 AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)

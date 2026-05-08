@@ -22,12 +22,17 @@ import org.readium.r2.testapp.data.model.ReadingStat
 import org.readium.r2.testapp.utils.extensions.readium.authorName
 import timber.log.Timber
 import org.readium.r2.testapp.data.db.VocabularyDao
+import org.readium.r2.testapp.data.model.AlarmLog
 import org.readium.r2.testapp.data.model.Vocabulary
+
+import org.readium.r2.testapp.data.db.AlarmLogDao
+
 
 class BookRepository(
     private val booksDao: BooksDao,
     private val notesDao: NotesDao,
-    private val vocabularyDao: VocabularyDao
+    private val vocabularyDao: VocabularyDao,
+    private val alarmLogDao: AlarmLogDao
 ) {
     // ===== ОСНОВНЫЕ МЕТОДЫ =====
 
@@ -250,6 +255,16 @@ class BookRepository(
     fun getAllNotes(): Flow<List<Note>> = notesDao.getAllNotes()
 
     fun searchNotes(query: String): Flow<List<Note>> = notesDao.searchNotes(query)
+
+    // ===== МЕТОДЫ ДЛЯ ЛОГОВ БУДИЛЬНИКА =====
+
+    suspend fun insertAlarmLog(log: AlarmLog): Long = alarmLogDao.insertLog(log)
+
+    fun getAllAlarmLogs(): Flow<List<AlarmLog>> = alarmLogDao.getAllLogs()
+
+    suspend fun deleteAlarmLogsOlderThan(beforeTimestamp: Long) = alarmLogDao.deleteLogsOlderThan(beforeTimestamp)
+
+    suspend fun deleteAllAlarmLogs() = alarmLogDao.deleteAllLogs()
 
     // ===== МЕТОДЫ ДЛЯ VOCABULARY (БАНК СЛОВ) =====
 

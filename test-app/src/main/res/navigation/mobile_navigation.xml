@@ -5,69 +5,60 @@
     android:id="@+id/mobile_navigation"
     app:startDestination="@id/menu_fragment">
 
-    <!-- Главное меню -->
+    <!-- Существующие фрагменты -->
     <fragment
         android:id="@+id/menu_fragment"
         android:name="org.readium.r2.testapp.ui.menu.MenuFragment"
         android:label="Главная"
         tools:layout="@layout/fragment_menu" />
 
-    <!-- Библиотека (ранее Читалка) -->
     <fragment
         android:id="@+id/bookshelf_fragment"
         android:name="org.readium.r2.testapp.bookshelf.BookshelfFragment"
         android:label="Библиотека"
         tools:layout="@layout/fragment_bookshelf" />
 
-
-    <!-- История чтения -->
     <fragment
         android:id="@+id/historyFragment"
         android:name="org.readium.r2.testapp.history.HistoryFragment"
         android:label="История"
         tools:layout="@layout/fragment_history" />
 
-    <!-- Добавьте после historyFragment или в нужное место -->
     <fragment
         android:id="@+id/notesFragment"
         android:name="org.readium.r2.testapp.notes.NotesFragment"
         android:label="Заметки"
         tools:layout="@layout/fragment_notes" />
 
-    <!-- Добавьте action для перехода, если нужно -->
-    <action
-        android:id="@+id/action_bookshelf_to_notes"
-        app:destination="@id/notesFragment" />
-
-
-
-    <!-- Будильник - настройки -->
+    <!-- Фрагмент будильника -->
     <fragment
         android:id="@+id/alarm_fragment"
         android:name="org.readium.r2.testapp.alarm.AlarmFragment"
         android:label="Будильник"
         tools:layout="@layout/fragment_alarm" />
 
-    <!-- Будильник - статистика -->
+    <!-- СТАТИСТИКА СНА -->
     <fragment
         android:id="@+id/sleepStatsFragment"
         android:name="org.readium.r2.testapp.alarm.SleepStatsFragment"
         android:label="Статистика сна"
         tools:layout="@layout/fragment_sleep_stats" />
 
+    <!-- ЛОГИ БУДИЛЬНИКА -->
+    <fragment
+        android:id="@+id/alarmLogsFragment"
+        android:name="org.readium.r2.testapp.alarm.AlarmLogsFragment"
+        android:label="Логи будильника"
+        tools:layout="@layout/fragment_alarm_logs" />
 
-    <!-- Банк слов -->
+    <!-- Vocabulary (Банк слов) -->
     <fragment
         android:id="@+id/vocabularyFragment"
         android:name="org.readium.r2.testapp.vocabulary.VocabularyFragment"
         android:label="Банк слов"
         tools:layout="@layout/fragment_vocabulary" />
 
-    <action
-        android:id="@+id/action_menu_to_vocabulary"
-        app:destination="@id/vocabularyFragment" />
-
-    <!-- Действия (actions) -->
+    <!-- Actions -->
     <action
         android:id="@+id/action_menu_to_bookshelf"
         app:destination="@id/bookshelf_fragment" />
@@ -81,7 +72,19 @@
         app:destination="@id/sleepStatsFragment" />
 
     <action
+        android:id="@+id/action_alarm_to_logs"
+        app:destination="@id/alarmLogsFragment" />
+
+    <action
         android:id="@+id/action_bookshelf_to_history"
         app:destination="@id/historyFragment" />
+
+    <action
+        android:id="@+id/action_bookshelf_to_notes"
+        app:destination="@id/notesFragment" />
+
+    <action
+        android:id="@+id/action_menu_to_vocabulary"
+        app:destination="@id/vocabularyFragment" />
 
 </navigation>

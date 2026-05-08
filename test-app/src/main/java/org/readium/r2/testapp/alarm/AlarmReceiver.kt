@@ -16,20 +16,23 @@ import android.os.Vibrator
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.data.model.AlarmType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class AlarmReceiver : BroadcastReceiver() {
+
     companion object {
         const val CHANNEL_ID = "alarm_channel"
         const val NOTIFICATION_ID = 1002
 
-        // mediaPlayer сделан internal, чтобы был доступен из AlarmAlertActivity
         @JvmStatic
         var mediaPlayer: MediaPlayer? = null
             private set
 
         private var vibrator: Vibrator? = null
 
-        // Публичный метод для остановки звука из AlarmAlertActivity
         @JvmStatic
         fun stopAlarmSound() {
             try {
@@ -51,6 +54,9 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d("AlarmReceiver", "=== ALARM TRIGGERED ===")
 
+        // Логируем получение WakeLock
+        AlarmLogger.logWakeLockAcquired()
+
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
@@ -59,7 +65,15 @@ class AlarmReceiver : BroadcastReceiver() {
         wakeLock.acquire(30_000)
 
         try {
-            val alarmType = intent.getStringExtra("alarm_type") ?: "morning"
+            val alarmTypeString = intent.getStringExtra("alarm_type") ?: "morning"
+            val alarmType = if (alarmTypeString == "morning") AlarmType.MORNING else AlarmType.EVENING
+            val triggerTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+
+            // Логируем срабатывание будильника
+            AlarmLogger.logTriggered(
+                alarmType = alarmType,
+                triggerTime = triggerTime
+            )
 
             // Проигрываем звук будильника
             playAlarmSound(context)
@@ -72,7 +86,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
             // Создаем Intent для запуска Activity
             val activityIntent = Intent(context, AlarmAlertActivity::class.java).apply {
-                putExtra("alarm_type", alarmType)
+                putExtra("alarm_type", alarmTypeString)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -86,13 +100,13 @@ class AlarmReceiver : BroadcastReceiver() {
 
             val contentPendingIntent = PendingIntent.getActivity(
                 context,
-                alarmType.hashCode(),
+                alarmTypeString.hashCode(),
                 activityIntent,
                 pendingIntentFlags
             )
 
-            val title = if (alarmType == "morning") "🌅 Доброе утро!" else "🌙 Спокойной ночи!"
-            val message = if (alarmType == "morning") "Нажмите, чтобы отметить подъём" else "Нажмите, чтобы отметить отбой"
+            val title = if (alarmTypeString == "morning") "🌅 Доброе утро!" else "🌙 Спокойной ночи!"
+            val message = if (alarmTypeString == "morning") "Нажмите, чтобы отметить подъём" else "Нажмите, чтобы отметить отбой"
 
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
@@ -110,17 +124,24 @@ class AlarmReceiver : BroadcastReceiver() {
             notificationManager.notify(NOTIFICATION_ID, notification)
 
             Log.d("AlarmReceiver", "Notification posted")
+            AlarmLogger.logActivityShown(alarmType)
 
         } catch (e: Exception) {
             Log.e("AlarmReceiver", "Failed to handle alarm", e)
+            AlarmLogger.logError(
+                alarmType = null,
+                message = "Ошибка обработки будильника: ${e.message}",
+                exception = e
+            )
         } finally {
             wakeLock.release()
+            AlarmLogger.logWakeLockReleased()
         }
     }
 
     private fun playAlarmSound(context: Context) {
         try {
-            stopAlarmSound() // Останавливаем предыдущий звук
+            stopAlarmSound()
 
             val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val uri = if (alarmSound != null) alarmSound else RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
@@ -140,6 +161,11 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d("AlarmReceiver", "Alarm sound playing")
         } catch (e: Exception) {
             Log.e("AlarmReceiver", "Failed to play sound", e)
+            AlarmLogger.logError(
+                alarmType = null,
+                message = "Не удалось воспроизвести звук: ${e.message}",
+                exception = e
+            )
         }
     }
 
