@@ -63,6 +63,16 @@
         android:id="@+id/action_menu_to_bookshelf"
         app:destination="@id/bookshelf_fragment" />
 
+    <fragment
+        android:id="@+id/yogaFragment"
+        android:name="org.readium.r2.testapp.yoga.YogaFragment"
+        android:label="Yoga"
+        tools:layout="@layout/fragment_yoga" />
+
+    <action
+        android:id="@+id/action_menu_to_yoga"
+        app:destination="@id/yogaFragment" />
+
     <action
         android:id="@+id/action_menu_to_alarm"
         app:destination="@id/alarm_fragment" />

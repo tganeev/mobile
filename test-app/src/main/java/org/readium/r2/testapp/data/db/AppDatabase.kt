@@ -17,9 +17,10 @@ import org.readium.r2.testapp.data.model.*
         SleepRecord::class,
         Note::class,
         Vocabulary::class,
-        AlarmLog::class
+        AlarmLog::class,
+        YogaSession::class  // ДОБАВЛЯЕМ СУЩНОСТЬ
     ],
-    version = 13,  // Увеличиваем версию
+    version = 14,  // УВЕЛИЧИВАЕМ ВЕРСИЮ С 13 ДО 14
     exportSchema = false
 )
 @TypeConverters(HighlightConverters::class, Converters::class)
@@ -31,6 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun notesDao(): NotesDao
     abstract fun vocabularyDao(): VocabularyDao
     abstract fun alarmLogDao(): AlarmLogDao
+    abstract fun yogaDao(): YogaDao  // ДОБАВЛЯЕМ
 
     companion object {
         @Volatile
@@ -43,7 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "database"
                 )
-                    .fallbackToDestructiveMigration()  // При конфликте — пересоздаёт БД
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

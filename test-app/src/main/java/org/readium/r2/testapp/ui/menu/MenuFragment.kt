@@ -7,7 +7,7 @@ import android.view.ViewGroup
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.findNavController
+import androidx.navigation.fragment.findNavController
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.launch
 import org.readium.r2.testapp.R
@@ -18,7 +18,6 @@ class MenuFragment : Fragment() {
 
     private var _binding: FragmentMenuBinding? = null
     private val binding get() = _binding!!
-
     private lateinit var modulesAdapter: ModulesAdapter
     private val libraryViewModel: LibraryStatsViewModel by viewModels()
 
@@ -61,7 +60,8 @@ class MenuFragment : Fragment() {
             Module(5, "Календарь", R.drawable.ic_module_calendar, isAvailable = false),
             Module(6, "Банк слов", R.drawable.ic_module_vocabulary, isAvailable = true),
             Module(7, "База знаний", R.drawable.ic_module_notes, isAvailable = false),
-            Module(8, "Вокал", R.drawable.ic_module_vocal, isAvailable = false)
+            Module(8, "Вокал", R.drawable.ic_module_vocal, isAvailable = false),
+            Module(9, "Yoga", R.drawable.ic_yoga_default, isAvailable = true)
         )
         modulesAdapter.submitList(modules)
     }
@@ -79,23 +79,25 @@ class MenuFragment : Fragment() {
             1 -> navigateToReader()
             3 -> navigateToAlarm()
             6 -> navigateToVocabulary()
+            9 -> navigateToYoga()
             else -> showUnderDevelopmentMessage(module)
         }
     }
 
-    private fun navigateToVocabulary() {
-        val navController = requireActivity().findNavController(R.id.nav_host_fragment)
-        navController.navigate(R.id.action_menu_to_vocabulary)
-    }
-
     private fun navigateToReader() {
-        val navController = requireActivity().findNavController(R.id.nav_host_fragment)
-        navController.navigate(R.id.action_menu_to_bookshelf)
+        findNavController().navigate(R.id.action_menu_to_bookshelf)
     }
 
     private fun navigateToAlarm() {
-        val navController = requireActivity().findNavController(R.id.nav_host_fragment)
-        navController.navigate(R.id.action_menu_to_alarm)
+        findNavController().navigate(R.id.action_menu_to_alarm)
+    }
+
+    private fun navigateToVocabulary() {
+        findNavController().navigate(R.id.action_menu_to_vocabulary)
+    }
+
+    private fun navigateToYoga() {
+        findNavController().navigate(R.id.action_menu_to_yoga)
     }
 
     private fun showUnderDevelopmentMessage(module: Module) {

@@ -14,26 +14,29 @@ import org.readium.r2.shared.util.Url
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.testapp.data.db.BooksDao
 import org.readium.r2.testapp.data.db.NotesDao
+import org.readium.r2.testapp.data.db.VocabularyDao
+import org.readium.r2.testapp.data.db.AlarmLogDao
+import org.readium.r2.testapp.data.db.YogaDao
+import org.readium.r2.testapp.data.db.YogaPracticeStat
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.data.model.Bookmark
 import org.readium.r2.testapp.data.model.Highlight
 import org.readium.r2.testapp.data.model.Note
 import org.readium.r2.testapp.data.model.ReadingStat
+import org.readium.r2.testapp.data.model.Vocabulary
+import org.readium.r2.testapp.data.model.AlarmLog
+import org.readium.r2.testapp.data.model.YogaSession
 import org.readium.r2.testapp.utils.extensions.readium.authorName
 import timber.log.Timber
-import org.readium.r2.testapp.data.db.VocabularyDao
-import org.readium.r2.testapp.data.model.AlarmLog
-import org.readium.r2.testapp.data.model.Vocabulary
-
-import org.readium.r2.testapp.data.db.AlarmLogDao
-
 
 class BookRepository(
     private val booksDao: BooksDao,
     private val notesDao: NotesDao,
     private val vocabularyDao: VocabularyDao,
-    private val alarmLogDao: AlarmLogDao
+    private val alarmLogDao: AlarmLogDao,
+    private val yogaDao: YogaDao
 ) {
+
     // ===== ОСНОВНЫЕ МЕТОДЫ =====
 
     fun books(): Flow<List<Book>> = booksDao.getBooksWithFile()
@@ -256,15 +259,7 @@ class BookRepository(
 
     fun searchNotes(query: String): Flow<List<Note>> = notesDao.searchNotes(query)
 
-    // ===== МЕТОДЫ ДЛЯ ЛОГОВ БУДИЛЬНИКА =====
-
-    suspend fun insertAlarmLog(log: AlarmLog): Long = alarmLogDao.insertLog(log)
-
-    fun getAllAlarmLogs(): Flow<List<AlarmLog>> = alarmLogDao.getAllLogs()
-
-    suspend fun deleteAlarmLogsOlderThan(beforeTimestamp: Long) = alarmLogDao.deleteLogsOlderThan(beforeTimestamp)
-
-    suspend fun deleteAllAlarmLogs() = alarmLogDao.deleteAllLogs()
+    suspend fun deleteAllNotes() = notesDao.deleteAllNotes()
 
     // ===== МЕТОДЫ ДЛЯ VOCABULARY (БАНК СЛОВ) =====
 
@@ -278,6 +273,29 @@ class BookRepository(
 
     fun searchWords(query: String): Flow<List<Vocabulary>> = vocabularyDao.searchWords(query)
 
+    // ===== МЕТОДЫ ДЛЯ ЛОГОВ БУДИЛЬНИКА =====
+
+    suspend fun insertAlarmLog(log: AlarmLog): Long = alarmLogDao.insertLog(log)
+
+    fun getAllAlarmLogs(): Flow<List<AlarmLog>> = alarmLogDao.getAllLogs()
+
+    suspend fun deleteAlarmLogsOlderThan(beforeTimestamp: Long) = alarmLogDao.deleteLogsOlderThan(beforeTimestamp)
+
+    suspend fun deleteAllAlarmLogs() = alarmLogDao.deleteAllLogs()
+
+    // ===== МЕТОДЫ ДЛЯ YOGA =====
+
+    suspend fun insertYogaSession(session: YogaSession): Long = yogaDao.insertSession(session)
+
+    fun getAllYogaSessions(): Flow<List<YogaSession>> = yogaDao.getAllSessions()
+
+    fun getYogaSessionsByDate(date: LocalDate): Flow<List<YogaSession>> = yogaDao.getSessionsByDate(date)
+
+    suspend fun getTotalYogaDurationForPractice(practiceName: String): Long? = yogaDao.getTotalDurationForPractice(practiceName)
+
+    fun getYogaPracticeStats(): Flow<List<YogaPracticeStat>> = yogaDao.getPracticeStats()
+
+    suspend fun deleteYogaSession(id: Long) = yogaDao.deleteSession(id)
 
     // ===== МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
 
@@ -289,8 +307,6 @@ class BookRepository(
 
     suspend fun findBooksByTitle(title: String): List<Book> =
         booksDao.findBooksByTitle(title)
-
-    suspend fun deleteAllNotes() = notesDao.deleteAllNotes()
 
     suspend fun getBookByIdentifier(identifier: String): Book? =
         booksDao.getBookByIdentifier(identifier)

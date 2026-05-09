@@ -84,10 +84,11 @@ class Application : android.app.Application() {
         // ВАЖНО: порядок параметров должен соответствовать конструктору BookRepository
         // Конструктор: BookRepository(booksDao, notesDao, vocabularyDao, alarmLogDao)
         bookRepository = BookRepository(
-            database.booksDao(),      // 1. BooksDao
-            database.notesDao(),      // 2. NotesDao
-            database.vocabularyDao(), // 3. VocabularyDao
-            database.alarmLogDao()    // 4. AlarmLogDao
+            database.booksDao(),
+            database.notesDao(),
+            database.vocabularyDao(),
+            database.alarmLogDao(),
+            database.yogaDao()  // ДОБАВЛЯЕМ
         )
 
         sleepRepository = SleepRepository(database.sleepDao())
