@@ -14,104 +14,37 @@
         android:orientation="horizontal"
         android:padding="12dp">
 
-        <!-- ЛЕВАЯ ЧАСТЬ: Панель управления таймером -->
+        <!-- ЛЕВАЯ ЧАСТЬ: Изображение человека с чакрами (только изображение) -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:layout_marginEnd="8dp">
+            android:layout_marginEnd="8dp"
+            android:gravity="center">
 
-            <TextView
+            <ScrollView
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Управление таймером"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
+                android:layout_height="match_parent">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:padding="16dp">
-
-                <TextView
-                    android:id="@+id/selectedTimerName"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Випашьяна"
-                    android:textSize="24sp"
-                    android:textStyle="bold"
-                    android:textColor="?attr/colorPrimary"
-                    android:gravity="center" />
-
-                <TextView
-                    android:id="@+id/selectedTimerDescription"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Практика осознанного наблюдения"
-                    android:textSize="12sp"
-                    android:textColor="?android:attr/textColorSecondary"
-                    android:gravity="center"
-                    android:layout_marginTop="8dp" />
-
-                <!-- Таймер с обратным отсчётом -->
-                <TextView
-                    android:id="@+id/timerDisplayText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="20:00"
-                    android:textSize="48sp"
-                    android:textStyle="bold"
-                    android:fontFamily="monospace"
-                    android:layout_marginTop="20dp"
-                    android:layout_marginBottom="20dp" />
-
-                <!-- Кнопки управления с иконками -->
                 <LinearLayout
-                    android:id="@+id/timerControlsLayout"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:visibility="gone">
+                    android:orientation="vertical"
+                    android:gravity="center"
+                    android:padding="8dp">
 
-                    <!-- Кнопка Пауза (две полоски) -->
-                    <ImageButton
-                        android:id="@+id/pauseTimerButton"
-                        android:layout_width="56dp"
-                        android:layout_height="56dp"
-                        android:src="@drawable/ic_baseline_pause_circle_24"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:tint="?attr/colorPrimary"
-                        android:layout_marginEnd="16dp"
-                        android:contentDescription="Пауза" />
-
-                    <!-- Кнопка Стоп (квадратик) -->
-                    <ImageButton
-                        android:id="@+id/stopTimerButton"
-                        android:layout_width="56dp"
-                        android:layout_height="56dp"
-                        android:src="@drawable/ic_baseline_stop_circle_24"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:tint="?attr/colorPrimary"
-                        android:contentDescription="Стоп" />
+                    <!-- Изображение человека с чакрами -->
+                    <ImageView
+                        android:id="@+id/chakraPersonImage"
+                        android:layout_width="200dp"
+                        android:layout_height="340dp"
+                        android:src="@drawable/ic_chakra_person"
+                        android:contentDescription="Человек с чакрами" />
 
                 </LinearLayout>
 
-                <!-- Кнопка запуска (стрелочка play) -->
-                <ImageButton
-                    android:id="@+id/startTimerButton"
-                    android:layout_width="64dp"
-                    android:layout_height="64dp"
-                    android:src="@drawable/ic_baseline_play_circle_24"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:tint="?attr/colorPrimary"
-                    android:contentDescription="Запустить" />
-
-            </LinearLayout>
+            </ScrollView>
 
         </LinearLayout>
 
@@ -122,7 +55,7 @@
             android:background="?android:attr/listDivider"
             android:layout_marginHorizontal="8dp" />
 
-        <!-- ПРАВАЯ ЧАСТЬ: Список запущенных таймеров -->
+        <!-- ПРАВАЯ ЧАСТЬ: Список запущенных таймеров и управление -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="match_parent"
@@ -138,12 +71,93 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="8dp" />
 
+            <!-- Список активных таймеров -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/activeTimersRecyclerView"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:clipToPadding="false"
                 android:paddingBottom="8dp" />
+
+            <!-- Панель управления выбранным таймером -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:padding="12dp"
+                android:background="?attr/colorSurfaceVariant"
+                android:layout_marginTop="8dp">
+
+                <TextView
+                    android:id="@+id/selectedTimerName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Шаматха"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="?attr/colorPrimary" />
+
+                <TextView
+                    android:id="@+id/selectedTimerDescription"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Практика устойчивого внимания"
+                    android:textSize="11sp"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:layout_marginTop="4dp" />
+
+                <TextView
+                    android:id="@+id/timerDisplayText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="31:00"
+                    android:textSize="32sp"
+                    android:textStyle="bold"
+                    android:fontFamily="monospace"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="8dp" />
+
+                <LinearLayout
+                    android:id="@+id/timerControlsLayout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <ImageButton
+                        android:id="@+id/pauseTimerButton"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:src="@drawable/ic_baseline_pause_circle_24"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:tint="?attr/colorPrimary"
+                        android:layout_marginEnd="12dp"
+                        android:contentDescription="Пауза" />
+
+                    <ImageButton
+                        android:id="@+id/stopTimerButton"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:src="@drawable/ic_baseline_stop_circle_24"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:tint="?attr/colorPrimary"
+                        android:contentDescription="Стоп" />
+
+                </LinearLayout>
+
+                <ImageButton
+                    android:id="@+id/startTimerButton"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:src="@drawable/ic_baseline_play_circle_24"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    app:tint="?attr/colorPrimary"
+                    android:layout_marginTop="4dp"
+                    android:contentDescription="Запустить" />
+
+            </LinearLayout>
 
         </LinearLayout>
 

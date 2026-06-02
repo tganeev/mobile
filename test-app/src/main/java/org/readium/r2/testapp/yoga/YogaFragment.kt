@@ -1,5 +1,6 @@
 package org.readium.r2.testapp.yoga
 
+import android.animation.ObjectAnimator
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -339,14 +340,45 @@ class YogaFragment : Fragment() {
     private fun updateSelectedTimerDisplay() {
         val practice = YogaPractices.practices.find { it.id == currentSelectedPracticeId }
         if (practice != null) {
-            binding.selectedTimerName.text = practice.name
-            binding.selectedTimerDescription.text = practice.description
+            // Обновляем подсветку чакр в зависимости от выбранной практики
+            highlightChakra(practice.name)
 
             val state = timerStates[practice.id]
             val remaining = state?.remainingSeconds ?: (practice.defaultDurationMinutes * 60L).toLong()
             val minutes = remaining / 60
             val seconds = remaining % 60
             binding.timerDisplayText.text = String.format("%02d:%02d", minutes, seconds)
+        }
+    }
+
+    private fun highlightChakra(practiceName: String) {
+        // Здесь можно реализовать подсветку определённой чакры
+        // в зависимости от выбранной практики
+        when (practiceName) {
+            "Випашьяна" -> {
+                // Подсветка коронной чакры (фиолетовая)
+            }
+            "Кумбхака" -> {
+                // Подсветка горловой чакры (голубая)
+            }
+            "Визуализация" -> {
+                // Подсветка чакры третьего глаза (индиго)
+            }
+            "Шаматха" -> {
+                // Подсветка сердечной чакры (зелёная)
+            }
+            "Концентрация" -> {
+                // Подсветка чакры солнечного сплетения (жёлтая)
+            }
+            "Пранаяма" -> {
+                // Подсветка сакральной чакры (оранжевая)
+            }
+            "Мантра" -> {
+                // Подсветка горловой чакры (голубая)
+            }
+            "Экадаш" -> {
+                // Подсветка корневой чакры (красная)
+            }
         }
     }
 
@@ -359,6 +391,29 @@ class YogaFragment : Fragment() {
         shamatha?.let {
             binding.circularMenuView.updateItemRemainingTime(it.id, centerTimerRemainingSeconds)
         }
+    }
+
+    fun startPulsingAnimation(view: View) {
+        // Анимация увеличения по X
+        val scaleX = ObjectAnimator.ofFloat(view, "scaleX", 1f, 1.05f)
+        // Анимация увеличения по Y
+        val scaleY = ObjectAnimator.ofFloat(view, "scaleY", 1f, 1.05f)
+
+        // Длительность одной фазы (туда-обратно будет 1600мс)
+        scaleX.duration = 800
+        scaleY.duration = 800
+
+        // Бесконечный повтор
+        scaleX.repeatCount = ObjectAnimator.INFINITE
+        scaleY.repeatCount = ObjectAnimator.INFINITE
+
+        // Режим "туда-обратно" (пульсация)
+        scaleX.repeatMode = ObjectAnimator.REVERSE
+        scaleY.repeatMode = ObjectAnimator.REVERSE
+
+        // Запуск
+        scaleX.start()
+        scaleY.start()
     }
 
     override fun onResume() {
