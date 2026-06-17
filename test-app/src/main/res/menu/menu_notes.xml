@@ -3,6 +3,18 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_export"
+        android:title="Экспорт"
+        android:icon="@drawable/ic_baseline_file_upload_24"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/action_import"
+        android:title="Импорт"
+        android:icon="@drawable/ic_baseline_file_download_24"
+        app:showAsAction="ifRoom" />
+
+    <item
         android:id="@+id/action_delete_all"
         android:title="Удалить все"
         android:icon="@drawable/ic_baseline_delete_24"

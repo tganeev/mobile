@@ -9,6 +9,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -21,8 +23,10 @@ import org.readium.r2.testapp.R
 import org.readium.r2.testapp.data.model.Note
 import org.readium.r2.testapp.databinding.FragmentNotesBinding
 import org.readium.r2.testapp.utils.viewLifecycle
-
-
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class NotesFragment : Fragment() {
 
@@ -30,6 +34,115 @@ class NotesFragment : Fragment() {
     private val binding get() = _binding!!
     private val viewModel: NotesViewModel by viewModels()
     private lateinit var adapter: NotesAdapter
+
+    // Лаунчер для экспорта (сохранение файла)
+    private val saveFileLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let {
+            lifecycleScope.launch {
+                try {
+                    val contentResolver = requireContext().contentResolver
+                    val outputStream = contentResolver.openOutputStream(uri)
+                    outputStream?.let { stream ->
+                        // Сохраняем JSON во временный файл, затем копируем
+                        val tempFile = File(requireContext().cacheDir, "temp_export.json")
+                        val result = viewModel.exportNotesToFile(tempFile)
+                        when (result) {
+                            is NotesViewModel.ExportResult.Success -> {
+                                // Копируем содержимое в выбранный URI
+                                tempFile.inputStream().use { input ->
+                                    stream.use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                tempFile.delete()
+                                Snackbar.make(
+                                    binding.root,
+                                    "Экспортировано заметок: ${result.count}",
+                                    Snackbar.LENGTH_LONG
+                                ).show()
+                            }
+                            is NotesViewModel.ExportResult.Error -> {
+                                Snackbar.make(
+                                    binding.root,
+                                    "Ошибка: ${result.message}",
+                                    Snackbar.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    } ?: run {
+                        Snackbar.make(
+                            binding.root,
+                            "Не удалось открыть файл для записи",
+                            Snackbar.LENGTH_LONG
+                        ).show()
+                    }
+                } catch (e: Exception) {
+                    Snackbar.make(
+                        binding.root,
+                        "Ошибка экспорта: ${e.message}",
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    // Лаунчер для импорта (выбор файла)
+    private val openFileLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            lifecycleScope.launch {
+                try {
+                    val contentResolver = requireContext().contentResolver
+                    val inputStream = contentResolver.openInputStream(uri)
+                    inputStream?.let { stream ->
+                        // Сохраняем во временный файл
+                        val tempFile = File(requireContext().cacheDir, "temp_import.json")
+                        tempFile.outputStream().use { output ->
+                            stream.copyTo(output)
+                        }
+                        stream.close()
+
+                        val result = viewModel.importNotesFromFile(tempFile)
+                        tempFile.delete()
+
+                        when (result) {
+                            is NotesViewModel.ImportResult.Success -> {
+                                val message = if (result.imported == result.total) {
+                                    "Импортировано ${result.imported} заметок"
+                                } else {
+                                    "Импортировано ${result.imported} из ${result.total} заметок (некоторые пропущены)"
+                                }
+                                Snackbar.make(binding.root, message, Snackbar.LENGTH_LONG).show()
+                            }
+                            is NotesViewModel.ImportResult.Error -> {
+                                Snackbar.make(
+                                    binding.root,
+                                    "Ошибка импорта: ${result.message}",
+                                    Snackbar.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    } ?: run {
+                        Snackbar.make(
+                            binding.root,
+                            "Не удалось открыть файл для чтения",
+                            Snackbar.LENGTH_LONG
+                        ).show()
+                    }
+                } catch (e: Exception) {
+                    Snackbar.make(
+                        binding.root,
+                        "Ошибка импорта: ${e.message}",
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -117,31 +230,6 @@ class NotesFragment : Fragment() {
             .show()
     }
 
-
-    private fun showEditNoteDialog(note: Note) {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_edit_note, null)
-        val noteInput = dialogView.findViewById<EditText>(R.id.note_content)
-        noteInput.setText(note.content)
-
-        MaterialAlertDialogBuilder(requireContext())
-            .setTitle("Редактировать заметку")
-            .setView(dialogView)
-            .setPositiveButton("Сохранить") { _, _ ->
-                val newContent = noteInput.text.toString().trim()
-                if (newContent.isNotEmpty()) {
-                    val updatedNote = note.copy(content = newContent)
-                    lifecycleScope.launch {
-                        viewModel.updateNote(updatedNote)
-                        Snackbar.make(binding.root, "Заметка обновлена", Snackbar.LENGTH_SHORT).show()
-                    }
-                } else {
-                    Snackbar.make(binding.root, "Заметка не может быть пустой", Snackbar.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
     private fun showNoteOptionsDialog(note: Note) {
         MaterialAlertDialogBuilder(requireContext())
             .setTitle("Удалить заметку?")
@@ -163,12 +251,43 @@ class NotesFragment : Fragment() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_export -> {
+                performExport()
+                true
+            }
+            R.id.action_import -> {
+                performImport()
+                true
+            }
             R.id.action_delete_all -> {
                 confirmDeleteAllNotes()
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    private fun performExport() {
+        // Проверяем, есть ли заметки для экспорта
+        lifecycleScope.launch {
+            val notes = viewModel.notes.value
+            if (notes.isEmpty()) {
+                Snackbar.make(binding.root, "Нет заметок для экспорта", Snackbar.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            // Создаём имя файла с датой
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val fileName = "pkms_notes_backup_${dateFormat.format(Date())}.json"
+
+            // Запускаем сохранение
+            saveFileLauncher.launch(fileName)
+        }
+    }
+
+    private fun performImport() {
+        // Запускаем выбор файла
+        openFileLauncher.launch(arrayOf("application/json"))
     }
 
     private fun confirmDeleteAllNotes() {
