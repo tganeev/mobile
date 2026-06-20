@@ -1,3 +1,5 @@
+// файл: src/main/java/org/readium/r2/testapp/data/db/AppDatabase.kt
+
 package org.readium.r2.testapp.data.db
 
 import android.content.Context
@@ -18,7 +20,7 @@ import org.readium.r2.testapp.data.model.*
         Note::class,
         Vocabulary::class
     ],
-    version = 12,  // Увеличиваем версию
+    version = 13,  // Увеличиваем версию
     exportSchema = false
 )
 @TypeConverters(HighlightConverters::class, Converters::class)
@@ -41,7 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "database"
                 )
-                    .fallbackToDestructiveMigration()  // При конфликте — пересоздаёт БД
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

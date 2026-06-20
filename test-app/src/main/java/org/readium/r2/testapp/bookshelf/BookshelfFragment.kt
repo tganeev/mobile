@@ -1,3 +1,5 @@
+// файл: src/main/java/org/readium/r2/testapp/bookshelf/BookshelfFragment.kt
+
 package org.readium.r2.testapp.bookshelf
 
 import android.content.Intent
@@ -9,7 +11,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.URLUtil
 import android.widget.EditText
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -25,17 +26,22 @@ import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.testapp.Application
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.backup.BackupContract
+import org.readium.r2.testapp.backup.BackupManager
+import org.readium.r2.testapp.backup.BackupSaveContract
 import org.readium.r2.testapp.data.model.Book
 import org.readium.r2.testapp.databinding.FragmentBookshelfBinding
 import org.readium.r2.testapp.opds.GridAutoFitLayoutManager
 import org.readium.r2.testapp.reader.ReaderActivityContract
 import org.readium.r2.testapp.utils.LinkBookDialogFragment
 import org.readium.r2.testapp.utils.viewLifecycle
-
 import kotlinx.coroutines.flow.consumeAsFlow
-import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.receiveAsFlow
+import androidx.activity.result.ActivityResultLauncher
 
+import kotlinx.coroutines.Dispatchers  // <--- ДОБАВИТЬ
+import kotlinx.coroutines.withContext  // <--- ДОБАВИТЬ
+import android.app.ProgressDialog
 
 class BookshelfFragment : Fragment() {
 
@@ -58,6 +64,22 @@ class BookshelfFragment : Fragment() {
 
     private val app: Application
         get() = requireContext().applicationContext as Application
+
+    // ===== НОВЫЕ ПОЛЯ ДЛЯ БЭКАПА =====
+    private lateinit var backupManager: BackupManager
+
+    private val exportBackupLauncher = registerForActivityResult(
+        BackupSaveContract()
+    ) { uri ->
+        uri?.let { performExport(it) }
+    }
+
+    private val importBackupLauncher = registerForActivityResult(
+        BackupContract()
+    ) { uri ->
+        uri?.let { performImport(it) }
+    }
+    // ===== КОНЕЦ НОВЫХ ПОЛЕЙ =====
 
     fun showEditBookDialog(book: Book) {
         val dialog = EditBookDialogFragment.newInstance(book)
@@ -102,6 +124,122 @@ class BookshelfFragment : Fragment() {
         }
     }
 
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ БЭКАПА =====
+
+    fun exportDatabase() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Экспорт базы данных")
+            .setMessage("Будет создан архив со всеми вашими данными (книги, заметки, статистика, слова и т.д.).\n\nВыберите место для сохранения.")
+            .setPositiveButton("Экспортировать") { _, _ ->
+                exportBackupLauncher.launch(Unit)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    fun importDatabase() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("Импорт базы данных")
+            .setMessage("⚠️ ВНИМАНИЕ!\n\nИмпорт полностью ЗАМЕНИТ все текущие данные приложения (книги, заметки, статистику).\n\nВыберите файл бэкапа для восстановления.")
+            .setPositiveButton("Импортировать") { _, _ ->
+                importBackupLauncher.launch(Unit)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+    private fun performExport(uri: Uri) {
+        lifecycleScope.launch {
+            val progressDialog = showProgressDialog("Экспорт данных...")
+
+            try {
+                // Используем callback подход
+                backupManager.exportData(uri) { progress ->
+                    // Обновляем UI в главном потоке
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        progressDialog.setProgress(progress)
+                    }
+                }
+
+                // Успешное завершение
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Snackbar.make(
+                        requireView(),
+                        "✅ Данные успешно экспортированы!",
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Snackbar.make(
+                        requireView(),
+                        "❌ Ошибка экспорта: ${e.message}",
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun performImport(uri: Uri) {
+        lifecycleScope.launch {
+            val progressDialog = showProgressDialog("Импорт данных...")
+
+            try {
+                // Используем callback подход
+                backupManager.importData(uri) { progress ->
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        progressDialog.setProgress(progress)
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+
+                    // Перезагружаем список книг
+                    lifecycleScope.launch {
+                        bookshelfViewModel.books.collectLatest {
+                            bookshelfAdapter.submitList(it)
+                        }
+                    }
+
+                    Snackbar.make(
+                        requireView(),
+                        "✅ Данные успешно импортированы!",
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Snackbar.make(
+                        requireView(),
+                        "❌ Ошибка импорта: ${e.message}",
+                        Snackbar.LENGTH_LONG
+                    ).show()
+                }
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun showProgressDialog(title: String): android.app.ProgressDialog {
+        return android.app.ProgressDialog(requireContext()).apply {
+            setTitle(title)
+            setMessage("Подождите...")
+            setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL)
+            max = 100
+            setCancelable(false)
+            show()
+        }
+    }
+
+    // ===== КОНЕЦ НОВЫХ МЕТОДОВ =====
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -117,6 +255,9 @@ class BookshelfFragment : Fragment() {
         view.addOnAttachStateChangeListener(onViewAttachedListener)
 
         bookshelfViewModel.channel.receive(viewLifecycleOwner) { handleEvent(it) }
+
+        // Инициализируем BackupManager
+        backupManager = BackupManager(requireContext())
 
         bookshelfAdapter = BookshelfAdapter(
             onBookClick = { book ->
@@ -224,7 +365,6 @@ class BookshelfFragment : Fragment() {
         }
     }
 
-    // ДОБАВИТЬ НОВЫЙ МЕТОД ДЛЯ ОБРАБОТКИ СОБЫТИЙ ИЗ BOOKSHELF
     private fun handleBookshelfEvent(event: org.readium.r2.testapp.domain.Bookshelf.Event) {
         when (event) {
             is org.readium.r2.testapp.domain.Bookshelf.Event.ShowLinkDialog -> {

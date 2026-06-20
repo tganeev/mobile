@@ -1,3 +1,5 @@
+// файл: src/main/java/org/readium/r2/testapp/data/BookRepository.kt
+
 package org.readium.r2.testapp.data
 
 import android.util.Log
@@ -23,6 +25,8 @@ import org.readium.r2.testapp.utils.extensions.readium.authorName
 import timber.log.Timber
 import org.readium.r2.testapp.data.db.VocabularyDao
 import org.readium.r2.testapp.data.model.Vocabulary
+import org.readium.r2.testapp.data.model.Catalog
+import kotlinx.coroutines.flow.first
 
 class BookRepository(
     private val booksDao: BooksDao,
@@ -251,6 +255,8 @@ class BookRepository(
 
     fun searchNotes(query: String): Flow<List<Note>> = notesDao.searchNotes(query)
 
+    suspend fun deleteAllNotes() = notesDao.deleteAllNotes()
+
     // ===== МЕТОДЫ ДЛЯ VOCABULARY (БАНК СЛОВ) =====
 
     suspend fun insertWord(word: Vocabulary): Long = vocabularyDao.insertWord(word)
@@ -263,7 +269,6 @@ class BookRepository(
 
     fun searchWords(query: String): Flow<List<Vocabulary>> = vocabularyDao.searchWords(query)
 
-
     // ===== МЕТОДЫ ДЛЯ СВЯЗЫВАНИЯ КНИГ С ИСТОРИЕЙ =====
 
     suspend fun findBookByServerIdentifier(serverIdentifier: String): Book? =
@@ -274,8 +279,6 @@ class BookRepository(
 
     suspend fun findBooksByTitle(title: String): List<Book> =
         booksDao.findBooksByTitle(title)
-
-    suspend fun deleteAllNotes() = notesDao.deleteAllNotes()
 
     suspend fun getBookByIdentifier(identifier: String): Book? =
         booksDao.getBookByIdentifier(identifier)
@@ -298,4 +301,20 @@ class BookRepository(
         cover: String,
         mediaType: String
     ) = booksDao.attachFileToBookById(bookId, href, cover, mediaType)
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ БЭКАПА =====
+
+    suspend fun getAllCatalogs(): Flow<List<Catalog>> =
+        booksDao.getCatalogModels()
+
+    suspend fun insertCatalog(catalog: Catalog): Long =
+        booksDao.insertCatalog(catalog)
+
+    suspend fun insertBookmark(bookmark: Bookmark): Long =
+        booksDao.insertBookmark(bookmark)
+
+    suspend fun insertHighlight(highlight: Highlight): Long =
+        booksDao.insertHighlight(highlight)
+
+
 }

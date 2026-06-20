@@ -7,6 +7,7 @@
         android:title="Синхронизация"
         android:icon="@drawable/ic_baseline_sync_24"
         app:showAsAction="always" />
+
     <item
         android:id="@+id/action_notes"
         android:title="Заметки"
@@ -19,9 +20,16 @@
         android:icon="@drawable/ic_outline_menu_24"
         app:showAsAction="ifRoom" />
 
+    <item
+        android:id="@+id/action_export_db"
+        android:title="Экспорт БД"
+        android:icon="@drawable/ic_baseline_file_upload_24"
+        app:showAsAction="ifRoom" />
 
-
-
-
+    <item
+        android:id="@+id/action_import_db"
+        android:title="Импорт БД"
+        android:icon="@drawable/ic_baseline_file_download_24"
+        app:showAsAction="ifRoom" />
 
 </menu>

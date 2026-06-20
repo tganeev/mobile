@@ -1,3 +1,5 @@
+// файл: src/main/java/org/readium/r2/testapp/data/SleepRepository.kt
+
 package org.readium.r2.testapp.data
 
 import kotlinx.coroutines.flow.Flow
@@ -97,8 +99,6 @@ class SleepRepository(
     suspend fun markBedTimeAsMissing(date: LocalDate) {
         val existing = sleepDao.getRecordByDate(date)
         if (existing != null) {
-            // Если запись уже существует, просто помечаем, что время не указано
-            // (оставляем bedTime = null, но можно добавить флаг isMissing)
             val updated = existing.copy(
                 bedTime = null,
                 isManual = false,
@@ -107,7 +107,6 @@ class SleepRepository(
             )
             sleepDao.updateRecord(updated)
         } else {
-            // Создаём запись с null для bedTime (означает "пропущено")
             val record = SleepRecord(
                 date = date,
                 bedTime = null,
@@ -150,11 +149,16 @@ class SleepRepository(
                 date = date,
                 wakeTime = wakeTime,
                 bedTime = bedTime,
-                isManual = true,  // Отмечаем как ручное редактирование
+                isManual = true,
                 updatedAt = System.currentTimeMillis(),
                 synced = false
             )
             sleepDao.updateRecord(updated)
         }
     }
+
+    // ===== НОВЫЙ МЕТОД ДЛЯ БЭКАПА =====
+
+    suspend fun insertRecord(record: SleepRecord): Long =
+        sleepDao.insertRecord(record)
 }

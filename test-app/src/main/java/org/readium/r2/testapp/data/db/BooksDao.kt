@@ -1,3 +1,5 @@
+// файл: src/main/java/org/readium/r2/testapp/data/db/BooksDao.kt
+
 package org.readium.r2.testapp.data.db
 
 import androidx.room.Dao
@@ -7,6 +9,7 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import org.readium.r2.testapp.data.model.*
+import org.readium.r2.testapp.data.model.Catalog
 
 @Dao
 interface BooksDao {
@@ -50,8 +53,6 @@ interface BooksDao {
             " SET " + Book.PROGRESSION + " = :locator WHERE " + Book.ID + "= :id"
     )
     suspend fun saveProgression(locator: String, id: Long)
-
-
 
     // ===== МЕТОДЫ ДЛЯ ЗАКЛАДОК =====
     @Query("SELECT * FROM " + Bookmark.TABLE_NAME + " WHERE " + Bookmark.BOOK_ID + " = :bookId")
@@ -104,7 +105,6 @@ interface BooksDao {
     @Query("SELECT SUM(pages_read) FROM reading_stats WHERE book_id = :bookId")
     suspend fun getTotalPagesRead(bookId: Long): Int?
 
-    // НОВЫЙ МЕТОД: Обновляет или создаёт статистику за конкретную дату
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertReadingStat(stat: ReadingStat)
 
@@ -229,4 +229,12 @@ interface BooksDao {
         cover: String,
         mediaType: String
     )
+
+    // ===== НОВЫЕ МЕТОДЫ ДЛЯ БЭКАПА =====
+
+    @Query("SELECT * FROM " + Catalog.TABLE_NAME)
+    fun getCatalogModels(): Flow<List<Catalog>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCatalog(catalog: Catalog): Long
 }
