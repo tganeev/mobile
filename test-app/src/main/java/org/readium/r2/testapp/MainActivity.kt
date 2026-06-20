@@ -79,20 +79,7 @@ class MainActivity : AppCompatActivity() {
                 navigateToNotes()
                 true
             }
-            // ===== НОВЫЕ ПУНКТЫ МЕНЮ =====
-            R.id.action_export_db -> {
-                val bookshelfFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment)
-                    ?.childFragmentManager?.fragments?.firstOrNull { it is BookshelfFragment }
-                (bookshelfFragment as? BookshelfFragment)?.exportDatabase()
-                true
-            }
-            R.id.action_import_db -> {
-                val bookshelfFragment = supportFragmentManager.findFragmentById(R.id.nav_host_fragment)
-                    ?.childFragmentManager?.fragments?.firstOrNull { it is BookshelfFragment }
-                (bookshelfFragment as? BookshelfFragment)?.importDatabase()
-                true
-            }
-            // ===== КОНЕЦ НОВЫХ ПУНКТОВ =====
+
             else -> super.onOptionsItemSelected(item)
         }
     }
