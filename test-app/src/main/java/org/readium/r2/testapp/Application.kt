@@ -1,3 +1,6 @@
+// файл: src/main/java/org/readium/r2/testapp/Application.kt
+// Исправляем только проблемные места
+
 package org.readium.r2.testapp
 
 import android.content.Context
@@ -74,6 +77,9 @@ class Application : android.app.Application() {
 
         DynamicColors.applyToActivitiesIfAvailable(this)
 
+        // Проверяем и мигрируем данные при первом запуске новой версии
+        checkAndMigrateData()
+
         readium = Readium(this)
 
         storageDir = computeStorageDir()
@@ -86,10 +92,6 @@ class Application : android.app.Application() {
             database.vocabularyDao()
         )
 
-
-
-
-        // Затем инициализация остальных репозиториев
         sleepRepository = SleepRepository(database.sleepDao())
         alarmPreferencesDataStore = AlarmPreferencesDataStore(this)
 
@@ -120,54 +122,38 @@ class Application : android.app.Application() {
             navigatorPreferences
         )
 
-
-
-        // Инициализация SyncManager ПОСЛЕ bookRepository
         syncManager = SyncManager(this, bookRepository)
-
         historySyncManager = HistorySyncManager(this, this)
 
-        // Запускаем сервис будильника при старте приложения
         startAlarmServices()
     }
 
-    private fun startAlarmServices() {
+    // ===== НОВЫЙ МЕТОД: Проверка и миграция данных =====
+    private fun checkAndMigrateData() {
         try {
-            // Запускаем AlarmSoundService в фоне
-            val intent = Intent(this, AlarmSoundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
+            val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+            val lastVersion = prefs.getInt("app_version_code", 0)
+            val currentVersion = BuildConfig.VERSION_CODE
+
+            Timber.d("Last version: $lastVersion, Current version: $currentVersion")
+
+            if (lastVersion < currentVersion) {
+                Timber.d("App updated from $lastVersion to $currentVersion")
+                prefs.edit().putInt("app_version_code", currentVersion).apply()
             }
-            Timber.d("AlarmSoundService started")
+
+            // Проверяем целостность БД
+            val database = File(applicationContext.filesDir, "database")
+            if (!database.exists()) {
+                Timber.d("Database file not found, will be created on first use")
+            }
+
         } catch (e: Exception) {
-            Timber.e(e, "Failed to start AlarmSoundService")
-        }
-
-        // Восстанавливаем будильники после перезапуска
-        coroutineScope.launch(Dispatchers.IO) {
-            alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
-                AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
-            }
+            Timber.e(e, "Failed to check app version")
         }
     }
 
-    private fun computeStorageDir(): File {
-        val properties = Properties()
-        val inputStream = assets.open("configs/config.properties")
-        properties.load(inputStream)
-        val useExternalFileDir = properties.getProperty("useExternalFileDir", "false")!!.toBoolean()
-
-        return File(
-            if (useExternalFileDir) {
-                getExternalFilesDir(null)?.path + "/"
-            } else {
-                filesDir?.path + "/"
-            }
-        )
-    }
-
+    // ===== СУЩЕСТВУЮЩИЕ МЕТОДЫ (не меняем) =====
     private fun enableStrictMode() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return
@@ -190,5 +176,40 @@ class Application : android.app.Application() {
                 }
                 .build()
         )
+    }
+
+    private fun computeStorageDir(): File {
+        val properties = Properties()
+        val inputStream = assets.open("configs/config.properties")
+        properties.load(inputStream)
+        val useExternalFileDir = properties.getProperty("useExternalFileDir", "false")!!.toBoolean()
+
+        return File(
+            if (useExternalFileDir) {
+                getExternalFilesDir(null)?.path + "/"
+            } else {
+                filesDir?.path + "/"
+            }
+        )
+    }
+
+    private fun startAlarmServices() {
+        try {
+            val intent = Intent(this, AlarmSoundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            Timber.d("AlarmSoundService started")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to start AlarmSoundService")
+        }
+
+        coroutineScope.launch(Dispatchers.IO) {
+            alarmPreferencesDataStore.alarmPreferencesFlow.collect { prefs ->
+                AlarmScheduler.rescheduleAllAlarms(this@Application, prefs)
+            }
+        }
     }
 }

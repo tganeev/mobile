@@ -1,3 +1,5 @@
+// файл: src/main/java/org/readium/r2/testapp/data/model/Book.kt
+
 package org.readium.r2.testapp.data.model
 
 import androidx.room.ColumnInfo
@@ -52,7 +54,7 @@ data class Book(
     @ColumnInfo(name = LAST_READ_DATE)
     var lastReadDate: Long? = null,
 
-    // НОВЫЕ ПОЛЯ
+    // ===== НОВЫЕ ПОЛЯ с DEFAULT значениями =====
     @ColumnInfo(name = IS_DELETED, defaultValue = "0")
     var isDeleted: Boolean = false,
 
